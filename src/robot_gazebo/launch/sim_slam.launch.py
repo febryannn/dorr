@@ -11,7 +11,6 @@ def generate_launch_description():
 
     pkg_robot_gazebo = get_package_share_directory('robot_gazebo')
     pkg_pointcloud_concatenate = get_package_share_directory('pointcloud_concatenate')
-    pkg_lidar_slam_3d = get_package_share_directory('lidar_slam_3d')
 
     # Launch Gazebo simulation
     sim_launch = IncludeLaunchDescription(
@@ -31,6 +30,7 @@ def generate_launch_description():
             'cloud_in3': '/kinect3/kinect3/depth/points',
             'cloud_in4': '/kinect4/kinect4/depth/points',
             'cloud_out': '/cloud',
+            'use_sim_time': 'true',
         }.items(),
     )
 
@@ -49,6 +49,7 @@ def generate_launch_description():
         'use_inf': False,
         'inf_epsilon': -0.05,
         'concurrency_level': 1,
+        'use_sim_time': True,
     }
 
     # scan1: front kinect (facing 0 deg) -> -28.5 to +28.5 deg

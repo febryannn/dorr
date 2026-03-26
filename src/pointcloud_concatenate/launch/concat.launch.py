@@ -36,6 +36,11 @@ def generate_launch_description():
             default_value='full_pointcloud',
             description='Output concatenated pointcloud topic'
         ),
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='false',
+            description='Use simulation clock'
+        ),
 
         Node(
             package='pointcloud_concatenate',
@@ -46,6 +51,7 @@ def generate_launch_description():
                 'target_frame': LaunchConfiguration('target_frame'),
                 'clouds': 4,
                 'hz': 10.0,
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
             }],
             remappings=[
                 ('cloud_in1', LaunchConfiguration('cloud_in1')),
