@@ -1,25 +1,13 @@
 #include "pointcloud_concatenate/pointcloud_concatenate.hpp"
 
-int main(int argc, char** argv) {
-  // Create node
-  ros::init(argc, argv, "pointcloud_concatenate");
-  ros::NodeHandle nh;
-  ros::NodeHandle pnh("~");  // Private nodehandle for parameters
+int main(int argc, char ** argv) {
+  rclcpp::init(argc, argv);
 
-  // Create object
-  ROS_INFO("Setting up class");
-  PointcloudConcatenate node(nh, pnh);
+  auto node = std::make_shared<PointcloudConcatenate>();
+  RCLCPP_INFO(node->get_logger(), "Spinning...");
 
-  /*                    Periodic spinning with rate               */
-  ROS_INFO("Spinning...");
-  double hz = node.getHz();
-  ros::Rate rate(hz); // Defing the looping rate
-  while (ros::ok())
-  {
-    node.update();
-    ros::spinOnce();
-    rate.sleep();
-  }
+  rclcpp::spin(node);
+  rclcpp::shutdown();
 
   return 0;
 }

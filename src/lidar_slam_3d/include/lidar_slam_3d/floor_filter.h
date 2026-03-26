@@ -3,7 +3,7 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
 namespace lidar_slam_3d
 {

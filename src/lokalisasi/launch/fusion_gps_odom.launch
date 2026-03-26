@@ -1,8 +1,0 @@
-<launch>
-    <include file="$(find udp_bot)/launch/udp_bot.launch"/>
-    <include file="$(find marvelmind_nav)/launch/hedge_pos.launch"/>
-
-    <node pkg="tf" type="static_transform_publisher" name="odom_to_base" args="0 0 0 0 0 0 odom base_link 100" />
-
-    <node pkg="lokalisasi" name="fusion_gps_odom" type="fusion_gps_odom" output="screen"/>
-</launch>

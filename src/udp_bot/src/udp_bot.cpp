@@ -1,12 +1,12 @@
-#include "ros/ros.h"
-#include "std_msgs/String.h"
-#include <udp_bot/kirim_kecepatan_udp.h>
-#include <udp_bot/kirim_offset_udp.h>
-#include <udp_bot/terima_udp.h>
-#include "geometry_msgs/Pose.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+#include "udp_bot/msg/kirim_kecepatan_udp.hpp"
+#include "udp_bot/msg/kirim_offset_udp.hpp"
+#include "udp_bot/msg/terima_udp.hpp"
+#include "geometry_msgs/msg/pose.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "iostream"
-#include <cstring> 
+#include <cstring>
 
 #include "udp_bot/UdpSocket.h"
 #ifdef _WIN32
@@ -22,7 +22,7 @@
 const char *addr = "169.254.1.15";
 uint16_t port = 4444;
 ////untuk bind dan local port ETH
-const char *listenAddr = "169.254.1.16"; 
+const char *listenAddr = "169.254.1.16";
 uint16_t localPort = 8888;
 
 ////untuk ip tujuan kirim data dan portnya Wifi
@@ -33,16 +33,15 @@ const char *listenAddr_lan = "192.168.0.161";
 uint16_t localPort_lan = 9999;
 
 
-
 class UnicastApp {
 public:
-    ros::Publisher terima_udp_pub;
-    ros::Subscriber kirim_kecepatan_udp_sub;
-    ros::Subscriber kirim_offset_udp_sub;
-    udp_bot::terima_udp msg;
+    rclcpp::Publisher<udp_bot::msg::TerimaUdp>::SharedPtr terima_udp_pub;
+    rclcpp::Subscription<udp_bot::msg::KirimKecepatanUdp>::SharedPtr kirim_kecepatan_udp_sub;
+    rclcpp::Subscription<udp_bot::msg::KirimOffsetUdp>::SharedPtr kirim_offset_udp_sub;
+    udp_bot::msg::TerimaUdp msg;
 
-    ros::Timer udp_send_timer;
-    
+    rclcpp::TimerBase::SharedPtr udp_send_timer;
+
     char stm_kirim[64] = {'t','e','l'};
     char stm_terima[70];
 
@@ -61,31 +60,33 @@ public:
     //////////////////////////////////
 
     // UDP Multicast
-    UnicastApp(ros::NodeHandle *nh, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port);
+    UnicastApp(rclcpp::Node::SharedPtr node, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port);
 
     virtual ~UnicastApp() = default;
 
-    void onReceiveData(const char *data, size_t size) ;
+    void onReceiveData(const char *data, size_t size);
 
     void sendMsg(const char *data, size_t len);
 
-    void udp_kecepatan_send_callback(const udp_bot::kirim_kecepatan_udp::ConstPtr& msg);
+    void udp_kecepatan_send_callback(const udp_bot::msg::KirimKecepatanUdp::SharedPtr msg);
 
-    void udp_offset_send_callback(const udp_bot::kirim_offset_udp::ConstPtr& msg);
+    void udp_offset_send_callback(const udp_bot::msg::KirimOffsetUdp::SharedPtr msg);
 
-    void send_udp_data_callback(const ros::TimerEvent& event);
+    void send_udp_data_callback();
 
 private:
     sockets::SocketOpt m_socketOpts;
     sockets::UdpSocket<UnicastApp> m_unicast;
 };
 
-UnicastApp::UnicastApp(ros::NodeHandle *nh, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port) : m_socketOpts({ sockets::TX_BUFFER_SIZE, sockets::RX_BUFFER_SIZE, listenAddr}), m_unicast(*this, &m_socketOpts) {
-    
-    terima_udp_pub = nh->advertise<udp_bot::terima_udp>("data_terima_udp", 10);
-    kirim_kecepatan_udp_sub = nh->subscribe("kecepatan_kirim_udp", 10, &UnicastApp::udp_kecepatan_send_callback, this);
-    kirim_offset_udp_sub = nh->subscribe("offset_kirim_udp", 10, &UnicastApp::udp_offset_send_callback, this);
-    
+UnicastApp::UnicastApp(rclcpp::Node::SharedPtr node, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port) : m_socketOpts({ sockets::TX_BUFFER_SIZE, sockets::RX_BUFFER_SIZE, listenAddr}), m_unicast(*this, &m_socketOpts) {
+
+    terima_udp_pub = node->create_publisher<udp_bot::msg::TerimaUdp>("data_terima_udp", 10);
+    kirim_kecepatan_udp_sub = node->create_subscription<udp_bot::msg::KirimKecepatanUdp>(
+        "kecepatan_kirim_udp", 10, std::bind(&UnicastApp::udp_kecepatan_send_callback, this, std::placeholders::_1));
+    kirim_offset_udp_sub = node->create_subscription<udp_bot::msg::KirimOffsetUdp>(
+        "offset_kirim_udp", 10, std::bind(&UnicastApp::udp_offset_send_callback, this, std::placeholders::_1));
+
     sockets::SocketRet ret = m_unicast.startUnicast(remoteAddr, localPort, port);
     if (ret.m_success) {
         std::cout << "Listening on UDP " << listenAddr << ":" << localPort << " sending to " << remoteAddr << ":" << port << "\n";
@@ -94,8 +95,8 @@ UnicastApp::UnicastApp(ros::NodeHandle *nh, const char *remoteAddr, const char *
         exit(1); // NOLINT
     }
 
-    udp_send_timer = nh->createTimer(ros::Duration(0.01), &UnicastApp::send_udp_data_callback, this);
-    
+    udp_send_timer = node->create_wall_timer(
+        std::chrono::milliseconds(10), std::bind(&UnicastApp::send_udp_data_callback, this));
 }
 
 void UnicastApp::sendMsg(const char *data, size_t len) {
@@ -110,7 +111,7 @@ void usage() {
 }
 
 void UnicastApp::onReceiveData(const char *data, size_t size) {
-    for(int i=0; i<size; i++){
+    for(int i=0; i<(int)size; i++){
         stm_terima[i] = data[i];
     }
 
@@ -137,36 +138,30 @@ void UnicastApp::onReceiveData(const char *data, size_t size) {
     msg.vx_global = vx_global;
     msg.vy_global = vy_global;
     msg.vw_global = vw_global;
-    terima_udp_pub.publish(msg);
-
-    // std::string str(reinterpret_cast<const char *>(data), size);
-    // std::cout << "Received: " << str << "\n";
-    // ROS_INFO_STREAM("DATA:" << sudut_w_buffer << "\n");
+    terima_udp_pub->publish(msg);
 }
 
 
-void UnicastApp::udp_kecepatan_send_callback(const udp_bot::kirim_kecepatan_udp::ConstPtr& msg)
+void UnicastApp::udp_kecepatan_send_callback(const udp_bot::msg::KirimKecepatanUdp::SharedPtr msg)
 {
-    // ROS_INFO_STREAM("vx: " << msg->kecepatan_x << ", vy: " << msg->kecepatan_y << ", vw: " << msg->kecepatan_sudut);
     kecepatan_x     = msg->kecepatan_x;
     kecepatan_y     = msg->kecepatan_y;
     kecepatan_sudut = msg->kecepatan_sudut;
     sudut_servo     = msg->sudut_servo;
-    
+
     /////for safety
     cnt_send_kecepatan = 0;
 }
 
-void UnicastApp::udp_offset_send_callback(const udp_bot::kirim_offset_udp::ConstPtr& msg)
+void UnicastApp::udp_offset_send_callback(const udp_bot::msg::KirimOffsetUdp::SharedPtr msg)
 {
-    // ROS_INFO_STREAM("ofs_x: " << msg->posisi_x_offset << ", ofs_y: " << msg->posisi_y_offset << ", ofs_w: " << msg->sudut_w_offset);
-    posisi_x_offset = msg->posisi_x_offset; 
+    posisi_x_offset = msg->posisi_x_offset;
     posisi_y_offset = msg->posisi_y_offset;
     sudut_w_offset  = msg->sudut_w_offset;
 }
 
-void UnicastApp::send_udp_data_callback(const ros::TimerEvent& event)
-{   
+void UnicastApp::send_udp_data_callback()
+{
     if(cnt_send_kecepatan >= 100) //jika lebih dari 1s tidak terima kecepatan
     {
         kecepatan_x     = 0;
@@ -175,7 +170,6 @@ void UnicastApp::send_udp_data_callback(const ros::TimerEvent& event)
     }
     if(cnt_send_kecepatan >= 100) cnt_send_kecepatan = 100;
 	else cnt_send_kecepatan++;
-    // ROS_INFO_STREAM(cnt_send_kecepatan);
 
     memcpy(stm_kirim + 3, &kecepatan_x, 4);
     memcpy(stm_kirim + 7, &kecepatan_y, 4);
@@ -186,17 +180,16 @@ void UnicastApp::send_udp_data_callback(const ros::TimerEvent& event)
     memcpy(stm_kirim + 27, &sudut_servo, 4);
 
     UnicastApp::sendMsg(stm_kirim, sizeof(stm_kirim));
-    // ROS_INFO_STREAM("vx: " << kecepatan_x << ", vy: " << kecepatan_y << ", vw: " << kecepatan_sudut);
 }
 
 
 class UnicastLan {
 public:
-    ros::Subscriber sub_robot_pos;
-    ros::Subscriber sub_robot_gps;
-    ros::Subscriber sub_robot_odo;
+    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_robot_pos;
+    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_robot_gps;
+    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_robot_odo;
 
-    ros::Timer pos_send_timer;
+    rclcpp::TimerBase::SharedPtr pos_send_timer;
 
     char lan_kirim[40] = {'t','e','u'};
     float robot_posx, robot_posy, robot_posw;
@@ -209,33 +202,36 @@ public:
     double roll_odo, pitch_odo, yaw_odo;
 
     // UDP Multicast
-    UnicastLan(ros::NodeHandle *nh, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port);
+    UnicastLan(rclcpp::Node::SharedPtr node, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port);
 
     virtual ~UnicastLan() = default;
 
-    void onReceiveData(const char *data, size_t size) ;
+    void onReceiveData(const char *data, size_t size);
 
     void sendMsg(const char *data, size_t len);
 
-    void robot_pos_callback(const geometry_msgs::Pose::ConstPtr& msg);
+    void robot_pos_callback(const geometry_msgs::msg::Pose::SharedPtr msg);
 
-    void robot_gps_callback(const geometry_msgs::Pose::ConstPtr& msg);
+    void robot_gps_callback(const geometry_msgs::msg::Pose::SharedPtr msg);
 
-    void robot_odo_callback(const geometry_msgs::Pose::ConstPtr& msg);
+    void robot_odo_callback(const geometry_msgs::msg::Pose::SharedPtr msg);
 
-    void send_pos_data_callback(const ros::TimerEvent& event);
+    void send_pos_data_callback();
 
 private:
     sockets::SocketOpt m_socketOpts;
     sockets::UdpSocket<UnicastLan> m_unicast;
 };
 
-UnicastLan::UnicastLan(ros::NodeHandle *nh, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port) : m_socketOpts({ sockets::TX_BUFFER_SIZE, sockets::RX_BUFFER_SIZE, listenAddr}), m_unicast(*this, &m_socketOpts) {
+UnicastLan::UnicastLan(rclcpp::Node::SharedPtr node, const char *remoteAddr, const char *listenAddr, uint16_t localPort, uint16_t port) : m_socketOpts({ sockets::TX_BUFFER_SIZE, sockets::RX_BUFFER_SIZE, listenAddr}), m_unicast(*this, &m_socketOpts) {
 
-    sub_robot_pos = nh->subscribe("robot_pos", 10, &UnicastLan::robot_pos_callback, this);
-    sub_robot_gps = nh->subscribe("robot_gps", 10, &UnicastLan::robot_gps_callback, this);
-    sub_robot_odo = nh->subscribe("robot_odo", 10, &UnicastLan::robot_odo_callback, this);
-    
+    sub_robot_pos = node->create_subscription<geometry_msgs::msg::Pose>(
+        "robot_pos", 10, std::bind(&UnicastLan::robot_pos_callback, this, std::placeholders::_1));
+    sub_robot_gps = node->create_subscription<geometry_msgs::msg::Pose>(
+        "robot_gps", 10, std::bind(&UnicastLan::robot_gps_callback, this, std::placeholders::_1));
+    sub_robot_odo = node->create_subscription<geometry_msgs::msg::Pose>(
+        "robot_odo", 10, std::bind(&UnicastLan::robot_odo_callback, this, std::placeholders::_1));
+
     sockets::SocketRet ret = m_unicast.startUnicast(remoteAddr, localPort, port);
     if (ret.m_success) {
         std::cout << "Listening on UDP " << listenAddr << ":" << localPort << " sending to " << remoteAddr << ":" << port << "\n";
@@ -244,8 +240,8 @@ UnicastLan::UnicastLan(ros::NodeHandle *nh, const char *remoteAddr, const char *
         exit(1); // NOLINT
     }
 
-    pos_send_timer = nh->createTimer(ros::Duration(0.01), &UnicastLan::send_pos_data_callback, this);
-
+    pos_send_timer = node->create_wall_timer(
+        std::chrono::milliseconds(10), std::bind(&UnicastLan::send_pos_data_callback, this));
 }
 
 void UnicastLan::sendMsg(const char *data, size_t len) {
@@ -256,11 +252,11 @@ void UnicastLan::sendMsg(const char *data, size_t len) {
 }
 
 void UnicastLan::onReceiveData(const char *data, size_t size) {
-    // std::string str(reinterpret_cast<const char *>(data), size);
-    // std::cout << "Received: " << str << "\n";
+    (void)data;
+    (void)size;
 }
 
-void UnicastLan::robot_pos_callback(const geometry_msgs::Pose::ConstPtr& msg)
+void UnicastLan::robot_pos_callback(const geometry_msgs::msg::Pose::SharedPtr msg)
 {
     robot_posx = (float)msg->position.x;
     robot_posy = (float)msg->position.y;
@@ -269,11 +265,9 @@ void UnicastLan::robot_pos_callback(const geometry_msgs::Pose::ConstPtr& msg)
     tf2::Matrix3x3 m(q);
     m.getRPY(roll,pitch,yaw);
     robot_posw = (float)yaw*TO_DEG;
-
-    // ROS_INFO_STREAM("X: " << robot_posx << " Y: " << robot_posy << " W: " << robot_posw);
 }
 
-void UnicastLan::robot_gps_callback(const geometry_msgs::Pose::ConstPtr& msg)
+void UnicastLan::robot_gps_callback(const geometry_msgs::msg::Pose::SharedPtr msg)
 {
     robot_gpsx = (float)msg->position.x;
     robot_gpsy = (float)msg->position.y;
@@ -282,11 +276,9 @@ void UnicastLan::robot_gps_callback(const geometry_msgs::Pose::ConstPtr& msg)
     tf2::Matrix3x3 m_gps(q_gps);
     m_gps.getRPY(roll_gps,pitch_gps,yaw_gps);
     robot_gpsw = (float)yaw_gps*TO_DEG;
-
-    // ROS_INFO_STREAM("X: " << robot_posx << " Y: " << robot_posy << " W: " << robot_posw);
 }
 
-void UnicastLan::robot_odo_callback(const geometry_msgs::Pose::ConstPtr& msg)
+void UnicastLan::robot_odo_callback(const geometry_msgs::msg::Pose::SharedPtr msg)
 {
     robot_odox = (float)msg->position.x;
     robot_odoy = (float)msg->position.y;
@@ -295,12 +287,10 @@ void UnicastLan::robot_odo_callback(const geometry_msgs::Pose::ConstPtr& msg)
     tf2::Matrix3x3 m_odo(q_odo);
     m_odo.getRPY(roll_odo,pitch_odo,yaw_odo);
     robot_odow = (float)yaw_odo*TO_DEG;
-
-    // ROS_INFO_STREAM("X: " << robot_posx << " Y: " << robot_posy << " W: " << robot_posw);
 }
 
-void UnicastLan::send_pos_data_callback(const ros::TimerEvent& event)
-{   
+void UnicastLan::send_pos_data_callback()
+{
     memcpy(lan_kirim + 3, &robot_posx, 4);
     memcpy(lan_kirim + 7, &robot_posy, 4);
     memcpy(lan_kirim + 11, &robot_posw, 4);
@@ -311,19 +301,20 @@ void UnicastLan::send_pos_data_callback(const ros::TimerEvent& event)
     memcpy(lan_kirim + 31, &robot_odoy, 4);
     memcpy(lan_kirim + 35, &robot_odow, 4);
     UnicastLan::sendMsg(lan_kirim, sizeof(lan_kirim));
-    
 }
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "udp_bot");
-  ros::NodeHandle nh;
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<rclcpp::Node>("udp_bot");
 
-  auto *app = new UnicastApp(&nh, addr, listenAddr, localPort, port);
-  
-//   auto *lan = new UnicastLan(&nh, addr_lan, listenAddr_lan, localPort_lan, port_lan);
+  auto *app = new UnicastApp(node, addr, listenAddr, localPort, port);
+  (void)app;
 
-  ros::spin();
+//   auto *lan = new UnicastLan(node, addr_lan, listenAddr_lan, localPort_lan, port_lan);
+
+  rclcpp::spin(node);
+  rclcpp::shutdown();
 
   return 0;
 }

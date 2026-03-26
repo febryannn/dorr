@@ -41,7 +41,7 @@ void FloorFilter::filter(const pcl::PointCloud<pcl::PointXYZI>::Ptr& source_clou
     pcl::PointCloud<pcl::PointXYZI>::Ptr horizontal_cloud(new pcl::PointCloud<pcl::PointXYZI>);
     horizontal_cloud->reserve(clipped_cloud->size());
 
-    for (int i = 0; i < clipped_cloud->size(); i++) {
+    for (size_t i = 0; i < clipped_cloud->size(); i++) {
         float dot = normals->at(i).getNormalVector3fMap().normalized().dot(Eigen::Vector3f::UnitZ());
         if(std::abs(dot) > std::cos(point_normal_threshhold_ * M_PI / 180.0)) {
             horizontal_cloud->push_back(clipped_cloud->at(i));
@@ -62,8 +62,8 @@ void FloorFilter::filter(const pcl::PointCloud<pcl::PointXYZI>::Ptr& source_clou
 
     // too few inliers
     int inliers_num = inliers->indices.size();
-    if(inliers->indices.size() < floor_min_points_num_) {
-        ROS_INFO("Too less inliers. Only %d.", inliers_num);
+    if(inliers->indices.size() < static_cast<size_t>(floor_min_points_num_)) {
+        RCLCPP_INFO(rclcpp::get_logger("floor_filter"), "Too less inliers. Only %d.", inliers_num);
         return;
     }
 
@@ -73,7 +73,7 @@ void FloorFilter::filter(const pcl::PointCloud<pcl::PointXYZI>::Ptr& source_clou
     double dot = coeffs.head<3>().dot(Eigen::Vector3f::UnitZ());
     if(std::abs(dot) < std::cos(floor_normal_threshhold_ * M_PI / 180.0)) {
         // the normal is not vertical
-        ROS_INFO("The normal is not vertical!");
+        RCLCPP_INFO(rclcpp::get_logger("floor_filter"), "The normal is not vertical!");
         return;
     }
 

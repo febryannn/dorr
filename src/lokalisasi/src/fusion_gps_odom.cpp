@@ -1,334 +1,303 @@
-#include "iostream"
-#include "math.h"
+#include <iostream>
+#include <cmath>
+#include <chrono>
+#include <thread>
+
 #include <eigen3/Eigen/Dense>
-#include "ros/ros.h"
-#include <udp_bot/terima_udp.h>
-#include <udp_bot/kirim_offset_udp.h>
-#include "marvelmind_nav/hedge_pos_ang.h"
-#include "marvelmind_nav/hedge_quality.h"
-#include "geometry_msgs/Pose.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "rclcpp/rclcpp.hpp"
+#include "udp_bot/msg/terima_udp.hpp"
+#include "udp_bot/msg/kirim_offset_udp.hpp"
+// TODO: marvelmind_nav is not available in ROS2 yet.
+// Uncomment the following includes when a ROS2 port becomes available.
+// #include "marvelmind_nav/msg/hedge_pos_ang.hpp"
+// #include "marvelmind_nav/msg/hedge_quality.hpp"
+#include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "lokalisasi/fusion_gps_odom.h"
 #include "tf2_ros/transform_broadcaster.h"
-#include "geometry_msgs/TransformStamped.h"
 
 using namespace Eigen;
+using namespace std::chrono_literals;
 
 #define TO_DEG 57.295779513
 #define TO_RAD 0.01745329252
 
-#define r_robot_gps 0.0 ////jarak beacon ke pusat robot 0.0m
-#define offset_gpsx 0.0 //4m
-#define offset_gpsy 0.0  //5m
+#define r_robot_gps 0.0    ////jarak beacon ke pusat robot 0.0m
+#define offset_gpsx 0.0    //4m
+#define offset_gpsy 0.0    //5m
 #define gps_f_sample 0.0
 
-// #define r_robot_gps 0.23 ////jarak beacon ke pusat robot 0.23m
-// #define offset_gpsx 0.77 //4m
-// #define offset_gpsy -0.98  //5m
-// #define gps_f_sample 8.0
-
-float odox_buf, odoy_buf, odow_buf;
-float odox_offset, odoy_offset, odow_offset;
-float gpsx_buf, gpsy_buf, gpsw_buf;
-float gpsx, gpsy, gpsw;
-float gpsx_prev, gpsy_prev, gpsw_prev;
-float gps_quality, gps_q;
-
-int status_init_pos;
-float robotx, roboty, robotw;
-
-float vx_lokal, vy_lokal, vw_lokal;
-float vx_global, vy_global, vw_global;
-float vx_gps, vy_gps, vw_gps;
-
-float w_mean, w_mean_sin, w_mean_cos;
-
-ros::Subscriber sub_robot_odom;
-ros::Subscriber sub_robot_hedge;
-ros::Subscriber sub_hedge_quality;
-
-ros::Publisher pub_robot_offset;
-udp_bot::kirim_offset_udp offset_msg;
-
-ros::Publisher pub_robot_pos;
-geometry_msgs::Pose pos_msg;
-
-ros::Publisher pub_robot_gps;
-geometry_msgs::Pose gps_msg;
-
-ros::Publisher pub_robot_odo;
-geometry_msgs::Pose odo_msg;
-
-tf2_ros::TransformBroadcaster* tf_broadcaster;
-
-ros::Timer fusion_process_timer;
-
-
-void robot_odom_callback(const udp_bot::terima_udp::ConstPtr& msg)
+class FusionGpsOdomNode : public rclcpp::Node
 {
-    // ROS_INFO_STREAM("ROBOT POS ODOM RCV");
-    odox_buf = msg->posisi_x_buffer;
-    odoy_buf = msg->posisi_y_buffer;
-    odow_buf = msg->sudut_w_buffer;
-
-    vx_lokal = msg->kecepatan_robotx;
-    vy_lokal = msg->kecepatan_roboty;
-    vw_lokal = msg->kecepatan_robotw;
-
-    // //// vx, vy (m/s) dan vw (rad/s) 
-    // vx_global = vx_lokal*sinf((odow_buf-odow_offset)*TO_RAD) + vy_lokal*cosf((odow_buf-odow_offset)*TO_RAD);
-    // vy_global = vx_lokal*-cosf((odow_buf-odow_offset)*TO_RAD) + vy_lokal*sinf((odow_buf-odow_offset)*TO_RAD);
-    // vw_global = vw_lokal;
-    vx_global = msg->vx_global;
-    vy_global = msg->vy_global;
-    vw_global = msg->vw_global;
-}
-
-void robot_hedge_callback(const marvelmind_nav::hedge_pos_ang::ConstPtr& msg)
-{
-    // ROS_INFO_STREAM("x: " << msg->x_m << "y: " << msg->y_m << "w: " << msg->angle);
-    gpsw_buf = (float)msg->angle;
-    gpsx_buf = (float)msg->x_m - (cosf(gpsw_buf*TO_RAD)*r_robot_gps) - offset_gpsx; ////jarak beacon ke pusat robot 0.23m
-    gpsy_buf = (float)msg->y_m - (sinf(gpsw_buf*TO_RAD)*r_robot_gps) - offset_gpsy; ////jarak beacon ke pusat robot 0.23m
-
-    vx_gps = (gpsx_buf - gpsx_prev)*gps_f_sample;
-    vy_gps = (gpsy_buf - gpsy_prev)*gps_f_sample;
-    float vw_temp;
-    vw_temp = gpsw_buf - gpsw_prev;
-    while (vw_temp > 180) vw_temp -= 360;
-    while (vw_temp < -180) vw_temp += 360;
-    vw_gps = vw_temp*TO_RAD*gps_f_sample;
-
-    gpsx_prev = gpsx_buf;
-    gpsy_prev = gpsy_buf;
-    gpsw_prev = gpsw_buf;    
-
-}
-
-void hedge_quality_callback(const marvelmind_nav::hedge_quality::ConstPtr& msg)
-{
-    gps_quality = (float)(msg->quality_percents)/100;
-    // ROS_INFO_STREAM("GPS QUALITY: " << gps_quality);
-}
-
-void fusion_process_callback(const ros::TimerEvent& event)
-{
-  gpsx = gpsx_buf;
-  gpsy = gpsy_buf;
-  gpsw = gpsw_buf;
-  gps_q = gps_quality;
-
-  if(status_init_pos == 0) ////untuk inisialisasi posisi dan orientasi secara global
+public:
+  FusionGpsOdomNode() : Node("fusion_gps_odom")
   {
-    ROS_INFO_STREAM("WAIT HIGH QUALITY INDOOR GPS DATA......");
-    if(gps_q > 0.95)
-    {
-      ///unutk offset inisialisasi (-x, -y, -w)
-      odox_offset = odox_buf - gpsx; 
-      odoy_offset = odoy_buf - gpsy;
-      odow_offset = odow_buf - gpsw;
+    odox_buf_ = odoy_buf_ = odow_buf_ = 0.0f;
+    odox_offset_ = odoy_offset_ = odow_offset_ = 0.0f;
+    gpsx_buf_ = gpsy_buf_ = gpsw_buf_ = 0.0f;
+    gpsx_ = gpsy_ = gpsw_ = 0.0f;
+    gpsx_prev_ = gpsy_prev_ = gpsw_prev_ = 0.0f;
+    gps_quality_ = gps_q_ = 0.0f;
+    status_init_pos_ = 0;
+    robotx_ = roboty_ = robotw_ = 0.0f;
+    vx_lokal_ = vy_lokal_ = vw_lokal_ = 0.0f;
+    vx_global_ = vy_global_ = vw_global_ = 0.0f;
+    vx_gps_ = vy_gps_ = vw_gps_ = 0.0f;
+    w_mean_ = w_mean_sin_ = w_mean_cos_ = 0.0f;
+    odom_data_received_ = false;
+    // TODO: gps_data_received_ and quality_data_received_ for marvelmind
+    // gps_data_received_ = false;
+    // quality_data_received_ = false;
 
-      offset_msg.posisi_x_offset = odox_offset; ///odox_buf untuk reset ke 0 bila ada data prev
-      offset_msg.posisi_y_offset = odoy_offset; ///odoy_buf untuk reset ke 0 bila ada data prev
-      offset_msg.sudut_w_offset  = odow_offset; ///odow_buf untuk reset ke 0 bila ada data prev
-      pub_robot_offset.publish(offset_msg);
-      
-      robotx = odox_buf - odox_offset;
-      roboty = odoy_buf - odoy_offset;
-      robotw = odow_buf - odow_offset;
-      while (robotw > 180) robotw -= 360;
-      while (robotw< -180) robotw += 360;
+    sub_robot_odom_ = this->create_subscription<udp_bot::msg::TerimaUdp>(
+      "data_terima_udp", 10,
+      std::bind(&FusionGpsOdomNode::robot_odom_callback, this, std::placeholders::_1));
 
-      ROS_INFO_STREAM("ROBOT POS INIT DONE!!!!!");
-      status_init_pos = 1;
+    // TODO: marvelmind_nav subscriptions - uncomment when available in ROS2
+    // sub_robot_hedge_ = this->create_subscription<marvelmind_nav::msg::HedgePosAng>(
+    //   "hedge_pos_ang", 10,
+    //   std::bind(&FusionGpsOdomNode::robot_hedge_callback, this, std::placeholders::_1));
+    //
+    // sub_hedge_quality_ = this->create_subscription<marvelmind_nav::msg::HedgeQuality>(
+    //   "hedge_quality", 10,
+    //   std::bind(&FusionGpsOdomNode::hedge_quality_callback, this, std::placeholders::_1));
 
-      Xk_prev(0) = robotx;
-      Xk_prev(1) = roboty;
-      Xk_prev(2) = robotw;
+    pub_robot_offset_ = this->create_publisher<udp_bot::msg::KirimOffsetUdp>("offset_kirim_udp", 10);
+    pub_robot_pos_ = this->create_publisher<geometry_msgs::msg::Pose>("robot_pos", 10);
+    pub_robot_gps_ = this->create_publisher<geometry_msgs::msg::Pose>("robot_gps", 10);
+    pub_robot_odo_ = this->create_publisher<geometry_msgs::msg::Pose>("robot_odo", 10);
+
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    RCLCPP_INFO(this->get_logger(), "WAIT DATA FROM INDOOR GPS AND ODOMETRY");
+
+    // In ROS2, waitForMessage is not available. Use a wait timer instead.
+    wait_timer_ = this->create_wall_timer(100ms, std::bind(&FusionGpsOdomNode::wait_for_data, this));
+  }
+
+private:
+  void wait_for_data()
+  {
+    // TODO: Also check gps_data_received_ and quality_data_received_ when marvelmind is available
+    if (odom_data_received_) {
+      wait_timer_->cancel();
+      RCLCPP_INFO(this->get_logger(), "INDOOR GPS AND ODOMETRY RECEIVE!!");
+
+      // Sleep for 4 seconds then start processing
+      std::this_thread::sleep_for(4s);
+      RCLCPP_INFO(this->get_logger(), "[SENSOR FUSION BEGIN]");
+
+      fusion_process_timer_ = this->create_wall_timer(
+        10ms, std::bind(&FusionGpsOdomNode::fusion_process_callback, this));
     }
   }
-  else //untuk continuous loacalization
+
+  void robot_odom_callback(const udp_bot::msg::TerimaUdp::SharedPtr msg)
   {
-    // if(gps_q > 0.95) //mode full gps
-    // {
-    //   odox_offset = odox_buf - gpsx;
-    //   odoy_offset = odoy_buf - gpsy;
-    //   odow_offset = odow_buf - gpsw;
-      
-    //   msg.posisi_x_offset = odox_offset; ///odox_buf untuk reset ke 0 bila ada data prev
-    //   msg.posisi_y_offset = odoy_offset; ///odoy_buf untuk reset ke 0 bila ada data prev
-    //   msg.sudut_w_offset  = odow_offset; ///odow_buf untuk reset ke 0 bila ada data prev
-    //   pub_robot_offset.publish(msg);
-      
-    //   robotx = odox_buf - odox_offset;
-    //   roboty = odoy_buf - odoy_offset;
-    //   robotw = odow_buf - odow_offset;
-    //   while (robotw > 180) robotw -= 360;
-    //   while (robotw< -180) robotw += 360;
-    // }
-    // else if(gps_q >= 0.70 && gps_q <= 0.95) //mode combine gps dan odom
-    // {
-    //   ///calculate angle first////////
-    //   robotw = odow_buf - odow_offset;
-    //   while (robotw > 180) robotw -= 360;
-    //   while (robotw< -180) robotw += 360;
-    //   w_mean_sin = sinf(robotw*TO_RAD)*0.9 + sinf(gpsw*TO_RAD)*0.1;
-    //   w_mean_cos = cosf(robotw*TO_RAD)*0.9 + cosf(gpsw*TO_RAD)*0.1;
-    //   w_mean = (float)atan2(w_mean_sin,w_mean_cos);
-    //   robotw = w_mean * TO_DEG;
-    //   ///then calculate x and y//////////
-    //   robotx = 0.9*(odox_buf-odox_offset) + 0.1*(gpsx);
-    //   roboty = 0.9*(odoy_buf-odoy_offset) + 0.1*(gpsy);
+    odox_buf_ = msg->posisi_x_buffer;
+    odoy_buf_ = msg->posisi_y_buffer;
+    odow_buf_ = msg->sudut_w_buffer;
 
-    //   odox_offset = odox_buf - robotx;
-    //   odoy_offset = odoy_buf - roboty;
-    //   odow_offset = odow_buf - robotw;
-      
-    //   msg.posisi_x_offset = odox_offset; ///odox_buf untuk reset ke 0 bila ada data prev
-    //   msg.posisi_y_offset = odoy_offset; ///odoy_buf untuk reset ke 0 bila ada data prev
-    //   msg.sudut_w_offset  = odow_offset; ///odow_buf untuk reset ke 0 bila ada data prev
-    //   pub_robot_offset.publish(msg);
-    // }
-    // else //mode odom
-    // {
-    //   robotx = odox_buf - odox_offset;
-    //   roboty = odoy_buf - odoy_offset;
-    //   robotw = odow_buf - odow_offset;
-    //   while (robotw > 180) robotw -= 360;
-    //   while (robotw < -180) robotw += 360;
-    // }
+    vx_lokal_ = msg->kecepatan_robotx;
+    vy_lokal_ = msg->kecepatan_roboty;
+    vw_lokal_ = msg->kecepatan_robotw;
 
-    // ROS_INFO_STREAM("X: " << robotx << " Y: " << roboty << " W: " << robotw);
-    // ROS_INFO_STREAM("Vx: " << vx_global << " Vy: " << vy_global << " Vw: " << vw_global);
-    // ROS_INFO_STREAM("Gx: " << vx_gps << " Gy: " << vy_gps << " Gw: " << vw_gps);
-    // if(!(vx_global == 0.0 && vy_global == 0.0))
-    // {
-      Uk(0) = vx_global; Uk(1) = vy_global; Uk(2) = vw_global*TO_DEG;
-      Xkp = A*Xk_prev + B*Uk + Wk;
-      // Xkp(2) = odow_buf - odow_offset;
+    vx_global_ = msg->vx_global;
+    vy_global_ = msg->vy_global;
+    vw_global_ = msg->vw_global;
+
+    odom_data_received_ = true;
+  }
+
+  // TODO: marvelmind_nav callbacks - uncomment when available in ROS2
+  // void robot_hedge_callback(const marvelmind_nav::msg::HedgePosAng::SharedPtr msg)
+  // {
+  //   gpsw_buf_ = (float)msg->angle;
+  //   gpsx_buf_ = (float)msg->x_m - (cosf(gpsw_buf_ * TO_RAD) * r_robot_gps) - offset_gpsx;
+  //   gpsy_buf_ = (float)msg->y_m - (sinf(gpsw_buf_ * TO_RAD) * r_robot_gps) - offset_gpsy;
+  //
+  //   vx_gps_ = (gpsx_buf_ - gpsx_prev_) * gps_f_sample;
+  //   vy_gps_ = (gpsy_buf_ - gpsy_prev_) * gps_f_sample;
+  //   float vw_temp;
+  //   vw_temp = gpsw_buf_ - gpsw_prev_;
+  //   while (vw_temp > 180) vw_temp -= 360;
+  //   while (vw_temp < -180) vw_temp += 360;
+  //   vw_gps_ = vw_temp * TO_RAD * gps_f_sample;
+  //
+  //   gpsx_prev_ = gpsx_buf_;
+  //   gpsy_prev_ = gpsy_buf_;
+  //   gpsw_prev_ = gpsw_buf_;
+  //
+  //   gps_data_received_ = true;
+  // }
+  //
+  // void hedge_quality_callback(const marvelmind_nav::msg::HedgeQuality::SharedPtr msg)
+  // {
+  //   gps_quality_ = (float)(msg->quality_percents) / 100;
+  //   quality_data_received_ = true;
+  // }
+
+  void fusion_process_callback()
+  {
+    gpsx_ = gpsx_buf_;
+    gpsy_ = gpsy_buf_;
+    gpsw_ = gpsw_buf_;
+    gps_q_ = gps_quality_;
+
+    if (status_init_pos_ == 0)  ////untuk inisialisasi posisi dan orientasi secara global
+    {
+      RCLCPP_INFO(this->get_logger(), "WAIT HIGH QUALITY INDOOR GPS DATA......");
+      if (gps_q_ > 0.95)
+      {
+        ///unutk offset inisialisasi (-x, -y, -w)
+        odox_offset_ = odox_buf_ - gpsx_;
+        odoy_offset_ = odoy_buf_ - gpsy_;
+        odow_offset_ = odow_buf_ - gpsw_;
+
+        auto offset_msg = udp_bot::msg::KirimOffsetUdp();
+        offset_msg.posisi_x_offset = odox_offset_;
+        offset_msg.posisi_y_offset = odoy_offset_;
+        offset_msg.sudut_w_offset  = odow_offset_;
+        pub_robot_offset_->publish(offset_msg);
+
+        robotx_ = odox_buf_ - odox_offset_;
+        roboty_ = odoy_buf_ - odoy_offset_;
+        robotw_ = odow_buf_ - odow_offset_;
+        while (robotw_ > 180) robotw_ -= 360;
+        while (robotw_ < -180) robotw_ += 360;
+
+        RCLCPP_INFO(this->get_logger(), "ROBOT POS INIT DONE!!!!!");
+        status_init_pos_ = 1;
+
+        Xk_prev(0) = robotx_;
+        Xk_prev(1) = roboty_;
+        Xk_prev(2) = robotw_;
+      }
+    }
+    else  // untuk continuous localization
+    {
+      Uk(0) = vx_global_; Uk(1) = vy_global_; Uk(2) = vw_global_ * TO_DEG;
+      Xkp = A * Xk_prev + B * Uk + Wk;
       while (Xkp(2) > 180) Xkp(2) -= 360;
       while (Xkp(2) < -180) Xkp(2) += 360;
 
-      // if(gps_q > 0.90)
-      // {
-      //   Pk_prev = (Matrix <float, 3, 3>() << 
-      //              pow(0.05,2), 0.0,        0.0,
-      //              0.0,        pow(0.05,2), 0.0,
-      //              0.0,        0.0,        pow(5.0,2)).finished();
-      // }
-      Pkp = A*Pk_prev*A.transpose() + Qk;
-      Pkp = Pkp.array() * I.array(); //just take diagonal variance
+      Pkp = A * Pk_prev * A.transpose() + Qk;
+      Pkp = Pkp.array() * I.array();  // just take diagonal variance
 
-      // if(gps_q > 0.001) gps_q = 0.001;
-      Gps_Q(0,0) = exp(-(pow((gpsx-Xkp(0))/0.02,2)));
-      Gps_Q(1,1) = exp(-(pow((gpsy-Xkp(1))/0.02,2)));
-      Gps_Q(2,2) = exp(-(pow((gpsw-Xkp(2))/10.0,2)));
-      // ROS_INFO_STREAM("X: " << Gps_Q(0,0) << " Y: " << Gps_Q(1,1) << " W: " << Gps_Q(2,2));
-      R = (I-Gps_Q*H)*R_init + Gps_Q*(H*Pkp*H.transpose());
-      // R = R_init;
+      Gps_Q(0, 0) = exp(-(pow((gpsx_ - Xkp(0)) / 0.02, 2)));
+      Gps_Q(1, 1) = exp(-(pow((gpsy_ - Xkp(1)) / 0.02, 2)));
+      Gps_Q(2, 2) = exp(-(pow((gpsw_ - Xkp(2)) / 10.0, 2)));
+      R = (I - Gps_Q * H) * R_init + Gps_Q * (H * Pkp * H.transpose());
 
-      Kg = H*Pkp*H.transpose() + R;
-      Kg = Pkp*H.transpose() * Kg.inverse();
+      Kg = H * Pkp * H.transpose() + R;
+      Kg = Pkp * H.transpose() * Kg.inverse();
 
-      yk(0) = gpsx; yk(1) = gpsy; yk(2) = gpsw;
-      Yk = C*yk + Zk;
+      yk(0) = gpsx_; yk(1) = gpsy_; yk(2) = gpsw_;
+      Yk = C * yk + Zk;
 
-      while(Yk(2) - Xkp(2) > 180){Yk(2) -= 360;}
-      while(Yk(2) - Xkp(2) < -180){Yk(2) += 360;}
-      Xk = Xkp + Kg*(Yk-H*Xkp);
+      while (Yk(2) - Xkp(2) > 180) { Yk(2) -= 360; }
+      while (Yk(2) - Xkp(2) < -180) { Yk(2) += 360; }
+      Xk = Xkp + Kg * (Yk - H * Xkp);
       while (Xk(2) > 180) Xk(2) -= 360;
       while (Xk(2) < -180) Xk(2) += 360;
 
-      Pk = (I - Kg*H) * Pkp;
-      // Pk = (I - Kg*H)*Pkp + Kg*(H*Pk_init*H.transpose());
+      Pk = (I - Kg * H) * Pkp;
 
       Xk_prev = Xk;
       Pk_prev = Pk;
 
-      robotx = Xk(0);
-      roboty = Xk(1);
-      robotw = Xk(2);
-      ROS_INFO_STREAM("X: " << robotx << " Y: " << roboty << " W: " << robotw);
+      robotx_ = Xk(0);
+      roboty_ = Xk(1);
+      robotw_ = Xk(2);
+      RCLCPP_INFO(this->get_logger(), "X: %f Y: %f W: %f", robotx_, roboty_, robotw_);
 
-      odox_offset = odox_buf - robotx;
-      odoy_offset = odoy_buf - roboty;
-      odow_offset = odow_buf - robotw;
-      
-      offset_msg.posisi_x_offset = odox_offset; ///odox_buf untuk reset ke 0 bila ada data prev
-      offset_msg.posisi_y_offset = odoy_offset; ///odoy_buf untuk reset ke 0 bila ada data prev
-      offset_msg.sudut_w_offset  = odow_offset; ///odow_buf untuk reset ke 0 bila ada data prev
-      pub_robot_offset.publish(offset_msg);
+      odox_offset_ = odox_buf_ - robotx_;
+      odoy_offset_ = odoy_buf_ - roboty_;
+      odow_offset_ = odow_buf_ - robotw_;
+
+      auto offset_msg = udp_bot::msg::KirimOffsetUdp();
+      offset_msg.posisi_x_offset = odox_offset_;
+      offset_msg.posisi_y_offset = odoy_offset_;
+      offset_msg.sudut_w_offset  = odow_offset_;
+      pub_robot_offset_->publish(offset_msg);
     }
-    // ROS_INFO_STREAM("X: " << Kg(0,0) << " Y: " << Kg(1,1) << " W: " << Kg(2,2));
 
-    pos_msg.position.x = robotx;
-    pos_msg.position.y = roboty;
+    auto pos_msg = geometry_msgs::msg::Pose();
+    pos_msg.position.x = robotx_;
+    pos_msg.position.y = roboty_;
     tf2::Quaternion q;
-    q.setRPY(0,0,robotw*TO_RAD);
+    q.setRPY(0, 0, robotw_ * TO_RAD);
     pos_msg.orientation = tf2::toMsg(q);
-    pub_robot_pos.publish(pos_msg);
+    pub_robot_pos_->publish(pos_msg);
 
-    geometry_msgs::TransformStamped transformStamped;
-    transformStamped.header.stamp = ros::Time::now();
-    transformStamped.header.frame_id = "map";  // Parent frame (e.g., odom)
-    transformStamped.child_frame_id = "odom";  // Child frame (robot's base frame)
+    geometry_msgs::msg::TransformStamped transform_stamped;
+    transform_stamped.header.stamp = this->now();
+    transform_stamped.header.frame_id = "map";
+    transform_stamped.child_frame_id = "odom";
 
-    transformStamped.transform.translation.x = robotx;
-    transformStamped.transform.translation.y = roboty;
-    transformStamped.transform.translation.z = 0.0;  // Assuming 2D robot
+    transform_stamped.transform.translation.x = robotx_;
+    transform_stamped.transform.translation.y = roboty_;
+    transform_stamped.transform.translation.z = 0.0;
 
-    transformStamped.transform.rotation = pos_msg.orientation;  // Use the same orientation as Pose
+    transform_stamped.transform.rotation = pos_msg.orientation;
 
-    // Broadcast the transform
-    tf_broadcaster->sendTransform(transformStamped);
+    tf_broadcaster_->sendTransform(transform_stamped);
 
-    gps_msg.position.x = gpsx;
-    gps_msg.position.y = gpsy;
+    auto gps_msg = geometry_msgs::msg::Pose();
+    gps_msg.position.x = gpsx_;
+    gps_msg.position.y = gpsy_;
     tf2::Quaternion q_gps;
-    q_gps.setRPY(0,0,gpsw*TO_RAD);
+    q_gps.setRPY(0, 0, gpsw_ * TO_RAD);
     gps_msg.orientation = tf2::toMsg(q_gps);
-    pub_robot_gps.publish(gps_msg);
+    pub_robot_gps_->publish(gps_msg);
 
+    auto odo_msg = geometry_msgs::msg::Pose();
     odo_msg.position.x = Xkp(0);
     odo_msg.position.y = Xkp(1);
     tf2::Quaternion q_odo;
-    q_odo.setRPY(0,0,Xkp(2)*TO_RAD);
+    q_odo.setRPY(0, 0, Xkp(2) * TO_RAD);
     odo_msg.orientation = tf2::toMsg(q_odo);
-    pub_robot_odo.publish(odo_msg);
-    
-  // }
-  
+    pub_robot_odo_->publish(odo_msg);
+  }
 
-}
+  // Member variables
+  float odox_buf_, odoy_buf_, odow_buf_;
+  float odox_offset_, odoy_offset_, odow_offset_;
+  float gpsx_buf_, gpsy_buf_, gpsw_buf_;
+  float gpsx_, gpsy_, gpsw_;
+  float gpsx_prev_, gpsy_prev_, gpsw_prev_;
+  float gps_quality_, gps_q_;
+  int status_init_pos_;
+  float robotx_, roboty_, robotw_;
+  float vx_lokal_, vy_lokal_, vw_lokal_;
+  float vx_global_, vy_global_, vw_global_;
+  float vx_gps_, vy_gps_, vw_gps_;
+  float w_mean_, w_mean_sin_, w_mean_cos_;
+  bool odom_data_received_;
+  // bool gps_data_received_;
+  // bool quality_data_received_;
+
+  rclcpp::Subscription<udp_bot::msg::TerimaUdp>::SharedPtr sub_robot_odom_;
+  // TODO: marvelmind_nav subscription types - uncomment when available
+  // rclcpp::Subscription<marvelmind_nav::msg::HedgePosAng>::SharedPtr sub_robot_hedge_;
+  // rclcpp::Subscription<marvelmind_nav::msg::HedgeQuality>::SharedPtr sub_hedge_quality_;
+
+  rclcpp::Publisher<udp_bot::msg::KirimOffsetUdp>::SharedPtr pub_robot_offset_;
+  rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_robot_pos_;
+  rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_robot_gps_;
+  rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_robot_odo_;
+
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+  rclcpp::TimerBase::SharedPtr wait_timer_;
+  rclcpp::TimerBase::SharedPtr fusion_process_timer_;
+};
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "fusion_gps_odom");
-  ros::NodeHandle nh;
-
-  sub_robot_odom = nh.subscribe("data_terima_udp", 10, robot_odom_callback);
-  sub_robot_hedge = nh.subscribe("hedge_pos_ang", 10, robot_hedge_callback);
-  sub_hedge_quality = nh.subscribe("hedge_quality", 10, hedge_quality_callback);
-
-  pub_robot_offset = nh.advertise<udp_bot::kirim_offset_udp>("offset_kirim_udp", 10);
-  pub_robot_pos = nh.advertise<geometry_msgs::Pose>("robot_pos", 10);
-  pub_robot_gps = nh.advertise<geometry_msgs::Pose>("robot_gps", 10);
-  pub_robot_odo = nh.advertise<geometry_msgs::Pose>("robot_odo", 10);
-
-  tf_broadcaster = new tf2_ros::TransformBroadcaster();
-
-  ROS_INFO_STREAM("WAIT DATA FROM INDOOR GPS AND ODOMETRY");
-  ros::topic::waitForMessage<marvelmind_nav::hedge_pos_ang>("hedge_pos_ang");
-  ros::topic::waitForMessage<marvelmind_nav::hedge_quality>("hedge_quality");
-  ros::topic::waitForMessage<udp_bot::terima_udp>("data_terima_udp");
-  ROS_INFO_STREAM("INDOOR GPS AND ODOMETRY RECEIVE!!");
-
-  ros::Duration(4.0).sleep(); // sleep for 4 second
-  ROS_INFO_STREAM("[SENSOR FUSION BEGIN]");
-
-  fusion_process_timer = nh.createTimer(ros::Duration(0.01), fusion_process_callback);
-
-  ros::spin();
-
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<FusionGpsOdomNode>());
+  rclcpp::shutdown();
   return 0;
 }

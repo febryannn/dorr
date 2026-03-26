@@ -1,19 +1,21 @@
-#include "iostream"
-#include "math.h"
-#include "ros/ros.h"
-#include <udp_bot/terima_udp.h>
-#include <udp_bot/kirim_offset_udp.h>
-#include "sensor_msgs/point_cloud_conversion.h"
-#include "sensor_msgs/PointCloud.h"
-#include "sensor_msgs/PointCloud2.h"
-#include "geometry_msgs/Pose.h"
-#include "geometry_msgs/TransformStamped.h"
-#include "geometry_msgs/PoseWithCovarianceStamped.h"
-#include "nav_msgs/Odometry.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include <iostream>
+#include <cmath>
+#include <chrono>
+#include <thread>
+#include <array>
+
+#include "rclcpp/rclcpp.hpp"
+#include "udp_bot/msg/terima_udp.hpp"
+#include "udp_bot/msg/kirim_offset_udp.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+#include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
+#include "nav_msgs/msg/odometry.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
-#include "laser_assembler/AssembleScans.h"
+#include "tf2_ros/buffer.h"
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/common.h>
 #include <pcl/point_types.h>
@@ -25,295 +27,349 @@
 #define TO_DEG 57.295779513
 #define TO_RAD 0.01745329252
 
-// float robotx, roboty, robotw;
-tf2_ros::TransformBroadcaster* tf_broadcaster;
-tf2_ros::TransformBroadcaster* tf_broadcaster_odom;
-tf2_ros::TransformListener* tf_listener;
-tf2_ros::Buffer tf_listener_buffer;
+using namespace std::chrono_literals;
 
-double cov_pos[36] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-
-double cov_vel[36] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-
-geometry_msgs::Pose robot_position;
-geometry_msgs::Quaternion robot_orientation;
-nav_msgs::Odometry robot_odom;
-
-ros::Subscriber sub_cam_raw, sub_robot_odom;
-ros::Publisher pub_cam_filter, pub_robot_odom, pub_robot_pos;
-sensor_msgs::PointCloud2 input_points2, output_points2;
-int status_pub_points;
-ros::Timer pub_cam_filter_timer;
-double freq_points, min_cam_d, max_cam_d;
-
-double robotx, roboty, robotw;
-int status_init_odom;
-double roll, pitch, yaw;
-float vx_lokal, vy_lokal, vw_lokal;
-float vx_global, vy_global, vw_global;
-float odox_buf, odoy_buf, odow_buf;
-float odox_offset, odoy_offset, odow_offset;
-ros::Publisher pub_robot_offset;
-udp_bot::kirim_offset_udp offset_msg;
-ros::Subscriber sub_robot_offset;
-geometry_msgs::Pose pos_msg;
-
-ros::Timer localization_process_timer, robot_odom_timer;
-
-ros::Publisher pub_map, pub_init_pos;
-pcl::PointCloud<pcl::PointXYZRGB>::Ptr map_pcd (new pcl::PointCloud<pcl::PointXYZRGB>);
-sensor_msgs::PointCloud2 output_map;
-geometry_msgs::PoseWithCovarianceStamped init_pos;
-
-
-void cam_filter_callback(const sensor_msgs::PointCloud2ConstPtr &msg)
+class RgbdCamLocNode : public rclcpp::Node
 {
-    // ROS_INFO_STREAM("[FILTER CALLBACK]");
-    if (pub_cam_filter.getNumSubscribers () <= 0)
+public:
+  RgbdCamLocNode() : Node("rgbd_cam_loc")
+  {
+    // Declare parameters
+    this->declare_parameter("min_cam_d", 0.6);
+    this->declare_parameter("max_cam_d", 8.0);
+    this->declare_parameter("init_robotx", 0.0);
+    this->declare_parameter("init_roboty", 0.0);
+    this->declare_parameter("init_robotw", 0.0);
+    this->declare_parameter("maxf_points_out", 1.0);
+    this->declare_parameter("map_pcd_path", "/home/agv1/alfian/old_agv_ws/map_p206_final.pcd");
+
+    min_cam_d_ = this->get_parameter("min_cam_d").as_double();
+    max_cam_d_ = this->get_parameter("max_cam_d").as_double();
+    robotx_ = this->get_parameter("init_robotx").as_double();
+    roboty_ = this->get_parameter("init_roboty").as_double();
+    robotw_ = this->get_parameter("init_robotw").as_double();
+    freq_points_ = this->get_parameter("maxf_points_out").as_double();
+    std::string map_pcd_path = this->get_parameter("map_pcd_path").as_string();
+
+    status_pub_points_ = 0;
+    status_init_odom_ = 0;
+    roll_ = pitch_ = yaw_ = 0.0;
+    vx_lokal_ = vy_lokal_ = vw_lokal_ = 0.0f;
+    vx_global_ = vy_global_ = vw_global_ = 0.0f;
+    odox_buf_ = odoy_buf_ = odow_buf_ = 0.0f;
+    odox_offset_ = odoy_offset_ = odow_offset_ = 0.0f;
+    odom_data_received_ = false;
+
+    cov_pos_.fill(0.0);
+    cov_vel_.fill(0.0);
+
+    // Subscribers
+    sub_cam_raw_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "full_pointcloud", 10,
+      std::bind(&RgbdCamLocNode::cam_filter_callback, this, std::placeholders::_1));
+
+    sub_robot_odom_ = this->create_subscription<udp_bot::msg::TerimaUdp>(
+      "data_terima_udp", 10,
+      std::bind(&RgbdCamLocNode::robot_odom_callback, this, std::placeholders::_1));
+
+    sub_robot_offset_ = this->create_subscription<udp_bot::msg::KirimOffsetUdp>(
+      "offset_kirim_udp", 10,
+      std::bind(&RgbdCamLocNode::robot_offset_callback, this, std::placeholders::_1));
+
+    // Publishers
+    pub_cam_filter_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud", 10);
+    pub_robot_offset_ = this->create_publisher<udp_bot::msg::KirimOffsetUdp>("offset_kirim_udp", 10);
+    pub_robot_odom_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
+    pub_robot_pos_ = this->create_publisher<geometry_msgs::msg::Pose>("robot_pos", 10);
+    pub_init_pos_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
+    pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("map_cloud", 10);
+
+    // TF
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    // Load map PCD
+    map_pcd_ = std::make_shared<pcl::PointCloud<pcl::PointXYZRGB>>();
+    if (pcl::io::loadPCDFile<pcl::PointXYZRGB>(map_pcd_path, *map_pcd_) == -1)
     {
-      //ROS_DEBUG ("[point_cloud_converter] Got a PointCloud2 with %d points.", msg->width * msg->height);
-      return;
-    }
-
-    input_points2 = *msg;
-    ROS_DEBUG ("[point_cloud_converter] Got a PointCloud2 with %d points", input_points2.width * input_points2.height);
-    status_pub_points = 1;
-}
-
-void pub_cam_filter_callback(const ros::TimerEvent& event)
-{
-    if(status_pub_points == 1)
-    {
-        pcl::PCLPointCloud2::Ptr cam_cloud (new pcl::PCLPointCloud2());
-        pcl::PCLPointCloud2::Ptr cam_cloud_filtered (new pcl::PCLPointCloud2());
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cam_cloud_xyz (new pcl::PointCloud<pcl::PointXYZ>());
-        ///////// Convert and  filtering object///////////////
-        pcl_conversions::toPCL(input_points2,*cam_cloud);
-        ///////////crop filter
-        pcl::PointXYZ minPt, maxPt;
-        pcl::fromPCLPointCloud2(*cam_cloud, *cam_cloud_xyz);
-        pcl::getMinMax3D (*cam_cloud_xyz, minPt, maxPt);
-        pcl::CropBox<pcl::PCLPointCloud2> cb;
-        cb.setInputCloud (cam_cloud);
-        cb.setMin(Eigen::Vector4f(min_cam_d, minPt.y, minPt.z, 0.)); /// cb.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-        cb.setMax(Eigen::Vector4f(max_cam_d, maxPt.y, maxPt.z, 0.)); /// cb.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
-        cb.filter (*cam_cloud);
-        /////voxel grid filter
-        pcl::VoxelGrid<pcl::PCLPointCloud2> vg;
-        vg.setInputCloud (cam_cloud);
-        vg.setLeafSize (0.06f, 0.06f, 0.06f);
-        vg.filter (*cam_cloud);
-         //////////////Statistical Outlier Removal Filter//////////////////////////
-        pcl::StatisticalOutlierRemoval<pcl::PCLPointCloud2> sor;
-        sor.setInputCloud (cam_cloud);
-        sor.setMeanK (30);
-        sor.setStddevMulThresh (2.0);
-        sor.filter (*cam_cloud_filtered);
-        
-        pcl_conversions::fromPCL(*cam_cloud_filtered,output_points2);
-        pub_cam_filter.publish (output_points2);
-        status_pub_points = 0;
-    }
-}
-
-void robot_odom_callback(const udp_bot::terima_udp::ConstPtr& msg)
-{
-    // ROS_INFO_STREAM("ROBOT POS ODOM RCV");
-    odox_buf = msg->posisi_x_buffer;
-    odoy_buf = msg->posisi_y_buffer;
-    odow_buf = msg->sudut_w_buffer;
-
-    vx_lokal = msg->kecepatan_robotx;
-    vy_lokal = msg->kecepatan_roboty;
-    vw_lokal = msg->kecepatan_robotw;
-
-    vx_global = msg->vx_global;
-    vy_global = msg->vy_global;
-    vw_global = msg->vw_global;
-    // ROS_INFO_STREAM("VX: " << vx_lokal << " VY: " << vy_lokal << " VW: " << vw_lokal);
-
-}
-
-void robot_offset_callback(const udp_bot::kirim_offset_udp::ConstPtr& msg)
-{
-    odox_offset = msg->posisi_x_offset;
-    odoy_offset = msg->posisi_y_offset;
-    odow_offset = msg->sudut_w_offset;
-}
-
-void robot_odom_pub_callback(const ros::TimerEvent& event)
-{
-    if(status_init_odom == 0)
-    {
-        // robotx = roboty = robotw = 0;
-        odox_offset = odox_buf - robotx;
-        odoy_offset = odoy_buf - roboty;
-        odow_offset = odow_buf - robotw;
-        
-        offset_msg.posisi_x_offset = odox_offset; ///odox_buf untuk reset ke 0 bila ada data prev
-        offset_msg.posisi_y_offset = odoy_offset; ///odoy_buf untuk reset ke 0 bila ada data prev
-        offset_msg.sudut_w_offset  = odow_offset; ///odow_buf untuk reset ke 0 bila ada data prev
-        pub_robot_offset.publish(offset_msg);
-        
-        ROS_INFO_STREAM("[ODOMETRY INITIAL LOCATION DONE]");
-        status_init_odom = 1;
+      RCLCPP_ERROR(this->get_logger(), "Couldn't read PCD file: %s", map_pcd_path.c_str());
     }
     else
     {
-        robotx = odox_buf - odox_offset;
-        roboty = odoy_buf - odoy_offset;
-        robotw = odow_buf - odow_offset;
-        while (robotw > 180) robotw -= 360;
-        while (robotw< -180) robotw += 360;
-
-        pos_msg.position.x = robotx;
-        pos_msg.position.y = roboty;
-        tf2::Quaternion q;
-        q.setRPY(0,0,robotw*TO_RAD);
-        pos_msg.orientation = tf2::toMsg(q);
-
-        // ROS_INFO_STREAM("[ROBOT ODOM LOOP]");
-        robot_odom.header.stamp = ros::Time::now();
-        robot_odom.header.frame_id = "map";
-        robot_odom.pose.pose.position = pos_msg.position;
-        robot_odom.pose.pose.orientation = pos_msg.orientation;
-        std::copy(std::begin(cov_pos), std::end(cov_pos), std::begin(robot_odom.pose.covariance));
-        robot_odom.child_frame_id = "odom";
-        robot_odom.twist.twist.linear.x = vx_lokal;
-        robot_odom.twist.twist.linear.y = vy_lokal;
-        robot_odom.twist.twist.angular.z = vw_lokal;
-        std::copy(std::begin(cov_vel), std::end(cov_vel), std::begin(robot_odom.twist.covariance));
-        //publish the message
-        pub_robot_odom.publish(robot_odom);
-        
-        /////broadcast tf robot odom////////////////
-        geometry_msgs::TransformStamped transformStamped;
-        transformStamped.header.stamp = ros::Time::now();
-        transformStamped.header.frame_id = "odom";  // Parent frame (e.g., odom)
-        transformStamped.child_frame_id = "base_link";  // Child frame (robot's base frame)
-        transformStamped.transform.translation.x = robotx;
-        transformStamped.transform.translation.y = roboty;
-        transformStamped.transform.translation.z = 0.0;  // Assuming 2D robot
-        transformStamped.transform.rotation = pos_msg.orientation;  // Use the same orientation as Pose
-
-        // Broadcast the transform
-        tf_broadcaster->sendTransform(transformStamped);
-    } 
-}
-
-void localization_process_callback(const ros::TimerEvent& event)
-{
-    ROS_INFO_STREAM("[LOCALIZATION PROCESS LOOP]");
-    geometry_msgs::TransformStamped transformStamped;
-    try{
-      transformStamped = tf_listener_buffer.lookupTransform("map", "base_link", ros::Time(0)); 
-
-      robot_position.position.x = transformStamped.transform.translation.x;
-      robot_position.position.y = transformStamped.transform.translation.y;
-      robot_position.position.z = transformStamped.transform.translation.z;
-      robot_position.orientation.x = transformStamped.transform.rotation.x;
-      robot_position.orientation.y = transformStamped.transform.rotation.y;
-      robot_position.orientation.z = transformStamped.transform.rotation.z;
-      robot_position.orientation.w = transformStamped.transform.rotation.w;
-
-      pub_robot_pos.publish(robot_position);
+      pcl::toROSMsg(*map_pcd_, output_map_);
+      output_map_.header.stamp = this->now();
+      output_map_.header.frame_id = "map";
     }
-    catch (tf2::TransformException &ex) {
-      ROS_WARN("%s",ex.what());
 
+    RCLCPP_INFO(this->get_logger(), "WAIT DATA FROM ROBOT POS & RGBD CAMERA");
+
+    // Wait for odom data before starting
+    wait_timer_ = this->create_wall_timer(100ms, std::bind(&RgbdCamLocNode::wait_for_data, this));
+  }
+
+private:
+  void wait_for_data()
+  {
+    if (odom_data_received_) {
+      wait_timer_->cancel();
+      RCLCPP_INFO(this->get_logger(), "Pos and Pointcloud RECEIVE!!");
+
+      std::this_thread::sleep_for(2s);
+      RCLCPP_INFO(this->get_logger(), "[RGBD CAM LOCALIZATION PROCESS BEGIN]");
+
+      // Publish initial pose and map
+      publish_init_pose_and_map();
+
+      // Start timers
+      robot_odom_timer_ = this->create_wall_timer(
+        50ms, std::bind(&RgbdCamLocNode::robot_odom_pub_callback, this));
+
+      localization_process_timer_ = this->create_wall_timer(
+        100ms, std::bind(&RgbdCamLocNode::localization_process_callback, this));
+
+      int freq_ms = static_cast<int>(1000.0 / freq_points_);
+      pub_cam_filter_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(freq_ms),
+        std::bind(&RgbdCamLocNode::pub_cam_filter_callback, this));
+    }
+  }
+
+  void publish_init_pose_and_map()
+  {
+    geometry_msgs::msg::PoseWithCovarianceStamped init_pos;
+    init_pos.header.stamp = this->now();
+    init_pos.header.frame_id = "map";
+    init_pos.pose.pose.position.x = robotx_;
+    init_pos.pose.pose.position.y = roboty_;
+    tf2::Quaternion init_pos_q;
+    init_pos_q.setRPY(0, 0, robotw_ * TO_RAD);
+    init_pos.pose.pose.orientation = tf2::toMsg(init_pos_q);
+
+    std::array<double, 36> cov_init_pos;
+    cov_init_pos.fill(0.0);
+    cov_init_pos[0] = 0.05;   // xx
+    cov_init_pos[7] = 0.05;   // yy
+    cov_init_pos[35] = 0.1;   // yaw-yaw
+    std::copy(cov_init_pos.begin(), cov_init_pos.end(), init_pos.pose.covariance.begin());
+
+    for (int i = 0; i <= 2; i++)
+    {
+      pub_map_->publish(output_map_);
+      pub_init_pos_->publish(init_pos);
+      std::this_thread::sleep_for(1s);
+    }
+  }
+
+  void cam_filter_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  {
+    if (pub_cam_filter_->get_subscription_count() <= 0)
+    {
       return;
     }
-}
+
+    input_points2_ = *msg;
+    RCLCPP_DEBUG(this->get_logger(), "[point_cloud_converter] Got a PointCloud2 with %d points",
+                 input_points2_.width * input_points2_.height);
+    status_pub_points_ = 1;
+  }
+
+  void pub_cam_filter_callback()
+  {
+    if (status_pub_points_ == 1)
+    {
+      pcl::PCLPointCloud2::Ptr cam_cloud(new pcl::PCLPointCloud2());
+      pcl::PCLPointCloud2::Ptr cam_cloud_filtered(new pcl::PCLPointCloud2());
+      pcl::PointCloud<pcl::PointXYZ>::Ptr cam_cloud_xyz(new pcl::PointCloud<pcl::PointXYZ>());
+
+      // Convert and filter
+      pcl_conversions::toPCL(input_points2_, *cam_cloud);
+
+      // Crop filter
+      pcl::PointXYZ minPt, maxPt;
+      pcl::fromPCLPointCloud2(*cam_cloud, *cam_cloud_xyz);
+      pcl::getMinMax3D(*cam_cloud_xyz, minPt, maxPt);
+      pcl::CropBox<pcl::PCLPointCloud2> cb;
+      cb.setInputCloud(cam_cloud);
+      cb.setMin(Eigen::Vector4f(min_cam_d_, minPt.y, minPt.z, 0.));
+      cb.setMax(Eigen::Vector4f(max_cam_d_, maxPt.y, maxPt.z, 0.));
+      cb.filter(*cam_cloud);
+
+      // Voxel grid filter
+      pcl::VoxelGrid<pcl::PCLPointCloud2> vg;
+      vg.setInputCloud(cam_cloud);
+      vg.setLeafSize(0.06f, 0.06f, 0.06f);
+      vg.filter(*cam_cloud);
+
+      // Statistical Outlier Removal Filter
+      pcl::StatisticalOutlierRemoval<pcl::PCLPointCloud2> sor;
+      sor.setInputCloud(cam_cloud);
+      sor.setMeanK(30);
+      sor.setStddevMulThresh(2.0);
+      sor.filter(*cam_cloud_filtered);
+
+      pcl_conversions::fromPCL(*cam_cloud_filtered, output_points2_);
+      pub_cam_filter_->publish(output_points2_);
+      status_pub_points_ = 0;
+    }
+  }
+
+  void robot_odom_callback(const udp_bot::msg::TerimaUdp::SharedPtr msg)
+  {
+    odox_buf_ = msg->posisi_x_buffer;
+    odoy_buf_ = msg->posisi_y_buffer;
+    odow_buf_ = msg->sudut_w_buffer;
+
+    vx_lokal_ = msg->kecepatan_robotx;
+    vy_lokal_ = msg->kecepatan_roboty;
+    vw_lokal_ = msg->kecepatan_robotw;
+
+    vx_global_ = msg->vx_global;
+    vy_global_ = msg->vy_global;
+    vw_global_ = msg->vw_global;
+
+    odom_data_received_ = true;
+  }
+
+  void robot_offset_callback(const udp_bot::msg::KirimOffsetUdp::SharedPtr msg)
+  {
+    odox_offset_ = msg->posisi_x_offset;
+    odoy_offset_ = msg->posisi_y_offset;
+    odow_offset_ = msg->sudut_w_offset;
+  }
+
+  void robot_odom_pub_callback()
+  {
+    if (status_init_odom_ == 0)
+    {
+      odox_offset_ = odox_buf_ - robotx_;
+      odoy_offset_ = odoy_buf_ - roboty_;
+      odow_offset_ = odow_buf_ - robotw_;
+
+      auto offset_msg = udp_bot::msg::KirimOffsetUdp();
+      offset_msg.posisi_x_offset = odox_offset_;
+      offset_msg.posisi_y_offset = odoy_offset_;
+      offset_msg.sudut_w_offset = odow_offset_;
+      pub_robot_offset_->publish(offset_msg);
+
+      RCLCPP_INFO(this->get_logger(), "[ODOMETRY INITIAL LOCATION DONE]");
+      status_init_odom_ = 1;
+    }
+    else
+    {
+      robotx_ = odox_buf_ - odox_offset_;
+      roboty_ = odoy_buf_ - odoy_offset_;
+      robotw_ = odow_buf_ - odow_offset_;
+      while (robotw_ > 180) robotw_ -= 360;
+      while (robotw_ < -180) robotw_ += 360;
+
+      geometry_msgs::msg::Pose pos_msg;
+      pos_msg.position.x = robotx_;
+      pos_msg.position.y = roboty_;
+      tf2::Quaternion q;
+      q.setRPY(0, 0, robotw_ * TO_RAD);
+      pos_msg.orientation = tf2::toMsg(q);
+
+      nav_msgs::msg::Odometry robot_odom;
+      robot_odom.header.stamp = this->now();
+      robot_odom.header.frame_id = "map";
+      robot_odom.pose.pose.position = pos_msg.position;
+      robot_odom.pose.pose.orientation = pos_msg.orientation;
+      std::copy(cov_pos_.begin(), cov_pos_.end(), robot_odom.pose.covariance.begin());
+      robot_odom.child_frame_id = "odom";
+      robot_odom.twist.twist.linear.x = vx_lokal_;
+      robot_odom.twist.twist.linear.y = vy_lokal_;
+      robot_odom.twist.twist.angular.z = vw_lokal_;
+      std::copy(cov_vel_.begin(), cov_vel_.end(), robot_odom.twist.covariance.begin());
+      pub_robot_odom_->publish(robot_odom);
+
+      // Broadcast tf robot odom
+      geometry_msgs::msg::TransformStamped transform_stamped;
+      transform_stamped.header.stamp = this->now();
+      transform_stamped.header.frame_id = "odom";
+      transform_stamped.child_frame_id = "base_link";
+      transform_stamped.transform.translation.x = robotx_;
+      transform_stamped.transform.translation.y = roboty_;
+      transform_stamped.transform.translation.z = 0.0;
+      transform_stamped.transform.rotation = pos_msg.orientation;
+
+      tf_broadcaster_->sendTransform(transform_stamped);
+    }
+  }
+
+  void localization_process_callback()
+  {
+    RCLCPP_INFO(this->get_logger(), "[LOCALIZATION PROCESS LOOP]");
+    geometry_msgs::msg::TransformStamped transform_stamped;
+    try {
+      transform_stamped = tf_buffer_->lookupTransform("map", "base_link", rclcpp::Time(0));
+
+      geometry_msgs::msg::Pose robot_position;
+      robot_position.position.x = transform_stamped.transform.translation.x;
+      robot_position.position.y = transform_stamped.transform.translation.y;
+      robot_position.position.z = transform_stamped.transform.translation.z;
+      robot_position.orientation.x = transform_stamped.transform.rotation.x;
+      robot_position.orientation.y = transform_stamped.transform.rotation.y;
+      robot_position.orientation.z = transform_stamped.transform.rotation.z;
+      robot_position.orientation.w = transform_stamped.transform.rotation.w;
+
+      pub_robot_pos_->publish(robot_position);
+    }
+    catch (tf2::TransformException &ex) {
+      RCLCPP_WARN(this->get_logger(), "%s", ex.what());
+      return;
+    }
+  }
+
+  // Member variables
+  double min_cam_d_, max_cam_d_, freq_points_;
+  double robotx_, roboty_, robotw_;
+  int status_pub_points_;
+  int status_init_odom_;
+  double roll_, pitch_, yaw_;
+  float vx_lokal_, vy_lokal_, vw_lokal_;
+  float vx_global_, vy_global_, vw_global_;
+  float odox_buf_, odoy_buf_, odow_buf_;
+  float odox_offset_, odoy_offset_, odow_offset_;
+  bool odom_data_received_;
+
+  std::array<double, 36> cov_pos_;
+  std::array<double, 36> cov_vel_;
+
+  sensor_msgs::msg::PointCloud2 input_points2_;
+  sensor_msgs::msg::PointCloud2 output_points2_;
+  sensor_msgs::msg::PointCloud2 output_map_;
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr map_pcd_;
+
+  // Subscriptions
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_cam_raw_;
+  rclcpp::Subscription<udp_bot::msg::TerimaUdp>::SharedPtr sub_robot_odom_;
+  rclcpp::Subscription<udp_bot::msg::KirimOffsetUdp>::SharedPtr sub_robot_offset_;
+
+  // Publishers
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cam_filter_;
+  rclcpp::Publisher<udp_bot::msg::KirimOffsetUdp>::SharedPtr pub_robot_offset_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_robot_odom_;
+  rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_robot_pos_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_init_pos_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
+
+  // TF
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+  // Timers
+  rclcpp::TimerBase::SharedPtr wait_timer_;
+  rclcpp::TimerBase::SharedPtr robot_odom_timer_;
+  rclcpp::TimerBase::SharedPtr localization_process_timer_;
+  rclcpp::TimerBase::SharedPtr pub_cam_filter_timer_;
+};
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "rgbd_cam_loc");
-  ros::NodeHandle nh;
-  ros::NodeHandle nh_("~");
-
-  nh_.param("min_cam_d", min_cam_d, 0.6);
-  nh_.param("max_cam_d", max_cam_d, 8.0);
-  nh_.param("init_robotx", robotx, 0.0);
-  nh_.param("init_roboty", roboty, 0.0);
-  nh_.param("init_robotw", robotw, 0.0);
-  nh_.param("maxf_points_out", freq_points, 1.0);
-
-  ROS_INFO_STREAM("WAIT DATA FROM ROBOT POS & RGBD CAMERA");
-  // ros::topic::waitForMessage<sensor_msgs::PointCloud2>("full_pointcloud");
-  ros::topic::waitForMessage<udp_bot::terima_udp>("data_terima_udp");
-  ROS_INFO_STREAM("Pos and Pointcloud RECEIVE!!");
-
-  sub_cam_raw = nh.subscribe("full_pointcloud", 10, cam_filter_callback);
-  sub_robot_odom = nh.subscribe("data_terima_udp", 10, robot_odom_callback);
-  sub_robot_offset = nh.subscribe("offset_kirim_udp", 10, robot_offset_callback);
-  
-  pub_cam_filter = nh.advertise<sensor_msgs::PointCloud2>("cloud", 10);
-  pub_robot_offset = nh.advertise<udp_bot::kirim_offset_udp>("offset_kirim_udp", 10);
-  pub_robot_odom = nh.advertise<nav_msgs::Odometry>("odom", 10);
-  pub_robot_pos = nh.advertise<geometry_msgs::Pose>("robot_pos", 10);
-
-  tf_broadcaster = new tf2_ros::TransformBroadcaster();
-  tf_broadcaster_odom = new tf2_ros::TransformBroadcaster();
-  tf_listener = new tf2_ros::TransformListener(tf_listener_buffer);
-
-  ros::Duration(2.0).sleep(); // sleep for 2 second
-  ROS_INFO_STREAM("[RGBD CAM LOCALIZATION PROCESS BEGIN]");
-
-  /////////pub init pos & map////////////////////////////
-  pub_init_pos = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 10);
-  init_pos.header.stamp = ros::Time::now();
-  init_pos.header.frame_id = "map";
-  init_pos.pose.pose.position.x = robotx;
-  init_pos.pose.pose.position.y = roboty;
-  tf2::Quaternion init_pos_q;
-  init_pos_q.setRPY(0,0,robotw*TO_RAD);
-  init_pos.pose.pose.orientation = tf2::toMsg(init_pos_q);
-  double cov_init_pos[36] = { 0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.05, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.0, 0.0, 0.0, 0.0, 0.1};
-  std::copy(std::begin(cov_init_pos), std::end(cov_init_pos), std::begin(init_pos.pose.covariance));
-
-  pub_map = nh.advertise<sensor_msgs::PointCloud2>("map_cloud", 10);
-  if (pcl::io::loadPCDFile<pcl::PointXYZRGB> ("/home/agv1/alfian/old_agv_ws/map_p206_final.pcd", *map_pcd) == -1) //* load the file
-  {
-    PCL_ERROR ("Couldn't read file test_pcd.pcd \n");
-    return (-1);
-  }
-  // /////voxel grid filter
-  // pcl::VoxelGrid<pcl::PointXYZRGB> vg;
-  // vg.setInputCloud (map_pcd);
-  // vg.setLeafSize (0.05f, 0.05f, 0.05f);
-  // vg.filter (*map_pcd);
-  pcl::toROSMsg(*map_pcd, output_map);
-  output_map.header.stamp = ros::Time::now();
-  output_map.header.frame_id = "map"; 
-  output_map.header.seq = 1; 
-
-  for(int i=0; i<=2; i++)
-  {
-    pub_map.publish (output_map);
-    pub_init_pos.publish (init_pos);
-    ros::Duration(1.0).sleep();
-  }
-
-  robot_odom_timer = nh.createTimer(ros::Duration(0.05), robot_odom_pub_callback);
-  localization_process_timer = nh.createTimer(ros::Duration(0.1), localization_process_callback);
-  pub_cam_filter_timer = nh.createTimer(ros::Duration(1.0/freq_points), pub_cam_filter_callback);
-  
-  ros::spin();
-
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<RgbdCamLocNode>());
+  rclcpp::shutdown();
   return 0;
 }

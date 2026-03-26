@@ -1,7 +1,0 @@
-<?xml version="1.0"?>
-
-<launch>
-    <include file="$(find robot_description)/launch/robot.launch" />
-
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find robot_visualization)/rviz/slam3d_rgbd_odom.rviz" output="screen"/>
-</launch>
