@@ -7,7 +7,7 @@ using std::placeholders::_1;
 LidarSlam3dRos::LidarSlam3dRos()
 : Node("lidar_slam_3d")
 {
-    std::string point_cloud_topic, odom_topic, laser_topic1, laser_topic2, laser_topic3;
+    std::string point_cloud_topic, odom_topic, laser_topic1, laser_topic2, laser_topic3, laser_topic4;
     Eigen::Translation3f offset_translation(0.0, 0.0, 0.0);
     Eigen::AngleAxisf offset_rotation (0.0, Eigen::Vector3f::UnitZ ());
     odom_offset_ = (offset_translation * offset_rotation).matrix ();
@@ -22,6 +22,7 @@ LidarSlam3dRos::LidarSlam3dRos()
     this->declare_parameter("laser_topic1", std::string("scan1"));
     this->declare_parameter("laser_topic2", std::string("scan2"));
     this->declare_parameter("laser_topic3", std::string("scan3"));
+    this->declare_parameter("laser_topic4", std::string("scan4"));
     this->declare_parameter("min_scan_distance", 2.0);
     this->declare_parameter("enable_floor_filter", true);
 
@@ -35,6 +36,7 @@ LidarSlam3dRos::LidarSlam3dRos()
     this->get_parameter("laser_topic1", laser_topic1);
     this->get_parameter("laser_topic2", laser_topic2);
     this->get_parameter("laser_topic3", laser_topic3);
+    this->get_parameter("laser_topic4", laser_topic4);
     this->get_parameter("min_scan_distance", min_scan_distance_);
     this->get_parameter("enable_floor_filter", enable_floor_filter_);
 
@@ -55,6 +57,8 @@ LidarSlam3dRos::LidarSlam3dRos()
         laser_topic2, 10000, std::bind(&LidarSlam3dRos::laserCallback2, this, _1));
     laser_sub_3 = this->create_subscription<sensor_msgs::msg::LaserScan>(
         laser_topic3, 10000, std::bind(&LidarSlam3dRos::laserCallback3, this, _1));
+    laser_sub_4 = this->create_subscription<sensor_msgs::msg::LaserScan>(
+        laser_topic4, 10000, std::bind(&LidarSlam3dRos::laserCallback4, this, _1));
 
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -153,7 +157,7 @@ void LidarSlam3dRos::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Sha
         pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_point_cloud(new pcl::PointCloud<pcl::PointXYZI>());
         pcl::PointCloud<pcl::PointXYZI>::Ptr floor_point_cloud(new pcl::PointCloud<pcl::PointXYZI>());
         floor_filter_.filter(clipped_point_cloud, filtered_point_cloud, floor_point_cloud);
-        map_builder_.addPointCloud(filtered_point_cloud, odom_pose_, odom_offset_, laser_xyz1, laser_xyz2, laser_xyz3);
+        map_builder_.addPointCloud(filtered_point_cloud, odom_pose_, odom_offset_, laser_xyz1, laser_xyz2, laser_xyz3, laser_xyz4);
 
         sensor_msgs::msg::PointCloud2 floor_cloud_msg;
         pcl::toROSMsg(*floor_point_cloud, floor_cloud_msg);
@@ -168,7 +172,7 @@ void LidarSlam3dRos::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Sha
         filtered_point_cloud_pub_->publish(filtered_cloud_msg);
     }
     else {
-        map_builder_.addPointCloud(clipped_point_cloud, odom_pose_, odom_offset_, laser_xyz1, laser_xyz2, laser_xyz3);
+        map_builder_.addPointCloud(clipped_point_cloud, odom_pose_, odom_offset_, laser_xyz1, laser_xyz2, laser_xyz3, laser_xyz4);
     }
 
     dual_pose pose = getPose(map_builder_.getTransformation());
@@ -249,6 +253,27 @@ void LidarSlam3dRos::laserCallback3(const sensor_msgs::msg::LaserScan::SharedPtr
     pcl::PCLPointCloud2 laser_pc2;
     pcl_conversions::toPCL(laser_cloud, laser_pc2);
     pcl::fromPCLPointCloud2(laser_pc2, laser_xyz3);
+}
+
+void LidarSlam3dRos::laserCallback4(const sensor_msgs::msg::LaserScan::SharedPtr laser_msg)
+{
+    rclcpp::Time scan_end_time = rclcpp::Time(laser_msg->header.stamp) +
+        rclcpp::Duration::from_seconds(laser_msg->ranges.size() * laser_msg->time_increment);
+
+    if(!tf_buffer_->canTransform(
+            map_frame_,
+            laser_msg->header.frame_id,
+            scan_end_time,
+            rclcpp::Duration::from_seconds(1.0))){
+        return;
+    }
+
+    sensor_msgs::msg::PointCloud2 laser_cloud;
+    projector_laser.transformLaserScanToPointCloud(map_frame_, *laser_msg, laser_cloud, *tf_buffer_);
+
+    pcl::PCLPointCloud2 laser_pc2;
+    pcl_conversions::toPCL(laser_cloud, laser_pc2);
+    pcl::fromPCLPointCloud2(laser_pc2, laser_xyz4);
 }
 
 

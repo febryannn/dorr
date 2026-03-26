@@ -20,13 +20,6 @@ def generate_launch_description():
         arguments=['0', '0', '0', '0', '0', '0', 'world', 'map'],
     )
 
-    base_to_camera_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_to_camera',
-        arguments=['0.13', '0', '0', '0', '0', '0', 'base_link', 'camera_link'],
-    )
-
     slam_rgbd_cam_node = Node(
         package='lokalisasi',
         executable='slam_rgbd_cam',
@@ -42,6 +35,8 @@ def generate_launch_description():
         }],
     )
 
+    # 4 pointcloud_to_laserscan nodes covering 4 quadrants (360 degree)
+    # scan1: front-right (0 to pi/2)
     pointcloud_to_laserscan1 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -55,8 +50,8 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
-            'angle_min': -0.4,
-            'angle_max': 0.4,
+            'angle_min': 0.0,
+            'angle_max': 1.5708,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -67,6 +62,7 @@ def generate_launch_description():
         }],
     )
 
+    # scan2: front-left (-pi/2 to 0)
     pointcloud_to_laserscan2 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -80,8 +76,8 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
-            'angle_min': 2.74,
-            'angle_max': 3.14,
+            'angle_min': -1.5708,
+            'angle_max': 0.0,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -92,6 +88,7 @@ def generate_launch_description():
         }],
     )
 
+    # scan3: back-left (pi/2 to pi)
     pointcloud_to_laserscan3 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -105,8 +102,34 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
-            'angle_min': -3.14,
-            'angle_max': -2.74,
+            'angle_min': 1.5708,
+            'angle_max': 3.14159,
+            'angle_increment': 0.0314159,
+            'scan_time': 0.1,
+            'range_min': 0.45,
+            'range_max': 7.0,
+            'use_inf': False,
+            'inf_epsilon': -0.05,
+            'concurrency_level': 1,
+        }],
+    )
+
+    # scan4: back-right (-pi to -pi/2)
+    pointcloud_to_laserscan4 = Node(
+        package='pointcloud_to_laserscan',
+        executable='pointcloud_to_laserscan_node',
+        name='pointcloud_to_laserscan4',
+        remappings=[
+            ('cloud_in', '/cloud'),
+            ('scan', '/scan4'),
+        ],
+        parameters=[{
+            'target_frame': 'camera_link',
+            'transform_tolerance': 0.01,
+            'min_height': 0.1,
+            'max_height': 3.0,
+            'angle_min': -3.14159,
+            'angle_max': -1.5708,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -123,16 +146,13 @@ def generate_launch_description():
         )
     )
 
-    # NOTE: jsk_pcl_utils/PointCloudToPCD nodelet not available in ROS2
-    # Use pcl_ros or custom node to save PCD files if needed
-
     return LaunchDescription([
         udp_bot_launch,
         world_to_map_tf,
-        base_to_camera_tf,
         slam_rgbd_cam_node,
         pointcloud_to_laserscan1,
         pointcloud_to_laserscan2,
         pointcloud_to_laserscan3,
+        pointcloud_to_laserscan4,
         lidar_slam_3d_launch,
     ])

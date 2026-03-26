@@ -23,13 +23,6 @@ def generate_launch_description():
         arguments=['0', '0', '0', '0', '0', '0', 'world', 'map'],
     )
 
-    base_to_camera_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_to_camera',
-        arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'camera_link'],
-    )
-
     rgbd_cam_loc_node = Node(
         package='lokalisasi',
         executable='rgbd_cam_loc',
@@ -48,6 +41,5 @@ def generate_launch_description():
     return LaunchDescription([
         udp_bot_launch,
         world_to_map_tf,
-        base_to_camera_tf,
         rgbd_cam_loc_node,
     ])
