@@ -1,6 +1,12 @@
+# ROS
 build/
 devel/
 logs/
-*.log
-*.pyc
-__pycache__/
+
+# Editor
+.vscode/
+*.swp
+
+# Data
+*.pcd
+*.stl
