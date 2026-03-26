@@ -43,10 +43,12 @@ def generate_launch_description():
     )
 
     # RViz2 for visualization
+    rviz_config = os.path.join(pkg_robot_gazebo, 'rviz', 'sim.rviz')
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
         name='rviz2',
+        arguments=['-d', rviz_config],
         output='screen',
         parameters=[{'use_sim_time': True}],
     )

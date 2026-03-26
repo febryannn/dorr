@@ -86,6 +86,19 @@ def generate_launch_description():
         }],
     )
 
+    # Static transform: map -> odom (identity, for simulation)
+    map_to_odom_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        arguments=['--x', '0', '--y', '0', '--z', '0',
+                   '--roll', '0', '--pitch', '0', '--yaw', '0',
+                   '--frame-id', 'map', '--child-frame-id', 'odom'],
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }],
+    )
+
     return LaunchDescription([
         use_sim_time,
         gz_resource_path,
@@ -93,4 +106,5 @@ def generate_launch_description():
         gazebo,
         spawn_robot,
         ros_gz_bridge,
+        map_to_odom_tf,
     ])

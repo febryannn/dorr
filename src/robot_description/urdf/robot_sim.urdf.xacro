@@ -178,7 +178,7 @@
       <sensor name="${name}_depth" type="depth_camera">
         <always_on>true</always_on>
         <update_rate>${kinect_fps}</update_rate>
-        <topic>${name}/${name}/depth</topic>
+        <topic>/${name}/${name}/depth</topic>
         <gz_frame_id>${name}_depth_optical_frame</gz_frame_id>
         <camera>
           <horizontal_fov>${kinect_hfov}</horizontal_fov>
@@ -196,7 +196,7 @@
       <sensor name="${name}_rgb" type="camera">
         <always_on>true</always_on>
         <update_rate>${kinect_fps}</update_rate>
-        <topic>${name}/${name}/rgb</topic>
+        <topic>/${name}/${name}/rgb</topic>
         <gz_frame_id>${name}_rgb_optical_frame</gz_frame_id>
         <camera>
           <horizontal_fov>${kinect_hfov}</horizontal_fov>
@@ -250,14 +250,6 @@
     <mu2>0.2</mu2>
   </gazebo>
 
-  <!-- Odom frame (virtual, published by diff_drive plugin) -->
-  <link name="odom"/>
-  <joint name="odom_joint" type="fixed">
-    <parent link="odom"/>
-    <child link="base_footprint"/>
-    <origin xyz="0 0 0"/>
-  </joint>
-
   <!-- ==================== WHEELS ========================= -->
 
   <xacro:drive_wheel name="left"  y_offset="${wheel_separation/2}"/>
@@ -304,8 +296,9 @@
       <wheel_radius>${wheel_radius}</wheel_radius>
       <max_linear_acceleration>1.0</max_linear_acceleration>
       <max_angular_acceleration>2.0</max_angular_acceleration>
-      <odom_topic>odom</odom_topic>
-      <tf_topic>tf</tf_topic>
+      <topic>/cmd_vel</topic>
+      <odom_topic>/odom</odom_topic>
+      <tf_topic>/tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_footprint</child_frame_id>
       <odom_publish_frequency>50</odom_publish_frequency>
@@ -318,7 +311,7 @@
             name="gz::sim::systems::JointStatePublisher">
       <joint_name>left_wheel_joint</joint_name>
       <joint_name>right_wheel_joint</joint_name>
-      <topic>joint_states</topic>
+      <topic>/joint_states</topic>
       <update_rate>50</update_rate>
     </plugin>
   </gazebo>
