@@ -49,6 +49,7 @@ private:
     void laserCallback2(const sensor_msgs::msg::LaserScan::SharedPtr laser_msg);
     void laserCallback3(const sensor_msgs::msg::LaserScan::SharedPtr laser_msg);
     void laserCallback4(const sensor_msgs::msg::LaserScan::SharedPtr laser_msg);
+    void laserCallback5(const sensor_msgs::msg::LaserScan::SharedPtr laser_msg);
 
 private:
     std::shared_ptr<std::thread> publish_thread_;
@@ -60,7 +61,7 @@ private:
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr constraint_list_pub_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_sub_1, laser_sub_2, laser_sub_3, laser_sub_4;
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_sub_1, laser_sub_2, laser_sub_3, laser_sub_4, laser_sub_5;
 
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -69,7 +70,7 @@ private:
     nav_msgs::msg::Path path_msg_;
 
     laser_geometry::LaserProjection projector_laser;
-    pcl::PointCloud<pcl::PointXYZ> laser_xyz1, laser_xyz2, laser_xyz3, laser_xyz4;
+    pcl::PointCloud<pcl::PointXYZ> laser_xyz1, laser_xyz2, laser_xyz3, laser_xyz4, laser_xyz5;
 
     Eigen::Matrix4f odom_pose_, odom_offset_;
     double odom_roll, odom_pitch, odom_yaw;

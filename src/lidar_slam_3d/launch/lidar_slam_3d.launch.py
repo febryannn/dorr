@@ -23,6 +23,7 @@ def generate_launch_description():
                 'laser_topic2': 'scan2',
                 'laser_topic3': 'scan3',
                 'laser_topic4': 'scan4',
+                'laser_topic5': 'scan5',
                 'enable_floor_filter': False,
             }],
         ),

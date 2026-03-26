@@ -35,8 +35,10 @@ def generate_launch_description():
         }],
     )
 
-    # 4 pointcloud_to_laserscan nodes covering 4 quadrants (360 degree)
-    # scan1: front-right (0 to pi/2)
+    # Kinect v1 horizontal FOV = 57 deg = 0.9948 rad (half = 28.5 deg = 0.4974 rad)
+    # 5 pointcloud_to_laserscan nodes matching actual Kinect v1 FOV
+
+    # scan1: front kinect (facing 0 deg) -> -28.5 to +28.5 deg
     pointcloud_to_laserscan1 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -50,8 +52,8 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
-            'angle_min': 0.0,
-            'angle_max': 1.5708,
+            'angle_min': -0.4974,
+            'angle_max': 0.4974,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -62,7 +64,7 @@ def generate_launch_description():
         }],
     )
 
-    # scan2: front-left (-pi/2 to 0)
+    # scan2: right kinect (facing -90 deg = -1.5708 rad) -> -118.5 to -61.5 deg
     pointcloud_to_laserscan2 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -76,8 +78,8 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
-            'angle_min': -1.5708,
-            'angle_max': 0.0,
+            'angle_min': -2.0682,
+            'angle_max': -1.0734,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -88,7 +90,7 @@ def generate_launch_description():
         }],
     )
 
-    # scan3: back-left (pi/2 to pi)
+    # scan3: left kinect (facing +90 deg = 1.5708 rad) -> +61.5 to +118.5 deg
     pointcloud_to_laserscan3 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -102,8 +104,8 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
-            'angle_min': 1.5708,
-            'angle_max': 3.14159,
+            'angle_min': 1.0734,
+            'angle_max': 2.0682,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -114,7 +116,7 @@ def generate_launch_description():
         }],
     )
 
-    # scan4: back-right (-pi to -pi/2)
+    # scan4: back kinect (facing 180 deg) positive side -> +151.5 to +180 deg
     pointcloud_to_laserscan4 = Node(
         package='pointcloud_to_laserscan',
         executable='pointcloud_to_laserscan_node',
@@ -128,8 +130,34 @@ def generate_launch_description():
             'transform_tolerance': 0.01,
             'min_height': 0.1,
             'max_height': 3.0,
+            'angle_min': 2.6442,
+            'angle_max': 3.14159,
+            'angle_increment': 0.0314159,
+            'scan_time': 0.1,
+            'range_min': 0.45,
+            'range_max': 7.0,
+            'use_inf': False,
+            'inf_epsilon': -0.05,
+            'concurrency_level': 1,
+        }],
+    )
+
+    # scan5: back kinect (facing 180 deg) negative side -> -180 to -151.5 deg
+    pointcloud_to_laserscan5 = Node(
+        package='pointcloud_to_laserscan',
+        executable='pointcloud_to_laserscan_node',
+        name='pointcloud_to_laserscan5',
+        remappings=[
+            ('cloud_in', '/cloud'),
+            ('scan', '/scan5'),
+        ],
+        parameters=[{
+            'target_frame': 'camera_link',
+            'transform_tolerance': 0.01,
+            'min_height': 0.1,
+            'max_height': 3.0,
             'angle_min': -3.14159,
-            'angle_max': -1.5708,
+            'angle_max': -2.6442,
             'angle_increment': 0.0314159,
             'scan_time': 0.1,
             'range_min': 0.45,
@@ -154,5 +182,6 @@ def generate_launch_description():
         pointcloud_to_laserscan2,
         pointcloud_to_laserscan3,
         pointcloud_to_laserscan4,
+        pointcloud_to_laserscan5,
         lidar_slam_3d_launch,
     ])
