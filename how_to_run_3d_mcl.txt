@@ -1,9 +1,0 @@
-## ROS MASTER #####
-roscore
-
-## untuk 3d MCL #####
-roslaunch freenect_launch dual_kinect.launch
-roslaunch lokalisasi rgbd_cam_loc.launch
-
-## untuk visualisasi #####
-roslaunch robot_visualization map.launch 
