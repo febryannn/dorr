@@ -5,9 +5,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/kirim_kecepatan_udp.msg"
-  "msg/kirim_offset_udp.msg"
-  "msg/terima_udp.msg"
+  "msg/KirimKecepatanUdp.msg"
+  "msg/KirimOffsetUdp.msg"
+  "msg/TerimaUdp.msg"
 )
 
 ament_package()
