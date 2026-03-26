@@ -29,7 +29,7 @@ find_package(Cholmod REQUIRED)
 find_package(PCL REQUIRED)
 
 set(G2O_LIBS
-  g2o_core g2o_stuff g2o_types_sba g2o_types_slam3d
+  g2o_core g2o_stuff g2o_types_sba g2o_types_slam3d g2o_solver_cholmod
 )
 
 set(ROS_DEPS
