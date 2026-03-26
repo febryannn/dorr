@@ -63,6 +63,46 @@ Visualization Manager:
       Style: Points
       Color Transformer: FlatColor
       Color: 255; 255; 0
+    - Class: rviz_default_plugins/PointCloud2
+      Name: SLAM Map
+      Enabled: true
+      Topic:
+        Value: /map_cloud
+      Size (Pixels): 2
+      Style: Points
+      Color Transformer: AxisColor
+      Axis: Z
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Concatenated Cloud
+      Enabled: false
+      Topic:
+        Value: /cloud
+      Size (Pixels): 2
+      Style: Points
+      Color Transformer: FlatColor
+      Color: 255; 255; 255
+    - Class: rviz_default_plugins/Path
+      Name: Robot Path
+      Enabled: true
+      Topic:
+        Value: /path
+      Color: 25; 255; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: Scan1
+      Enabled: false
+      Topic:
+        Value: /scan1
+      Size (Pixels): 3
+      Color Transformer: FlatColor
+      Color: 255; 0; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: Scan2
+      Enabled: false
+      Topic:
+        Value: /scan2
+      Size (Pixels): 3
+      Color Transformer: FlatColor
+      Color: 0; 0; 255
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
