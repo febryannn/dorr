@@ -23,9 +23,6 @@ def generate_launch_description():
     # World file
     world_file = os.path.join(pkg_robot_gazebo, 'worlds', 'indoor.sdf')
 
-    # Bridge config
-    bridge_config = os.path.join(pkg_robot_gazebo, 'config', 'ros_gz_bridge.yaml')
-
     # Set GZ_SIM_RESOURCE_PATH so Gazebo can find meshes
     gz_resource_path = SetEnvironmentVariable(
         name='GZ_SIM_RESOURCE_PATH',
@@ -75,11 +72,35 @@ def generate_launch_description():
         output='screen',
     )
 
-    # ros_gz_bridge (parameter bridge)
+    # ros_gz_bridge using command-line topic pair arguments
+    # Syntax: /topic@ros_type[gz_type  (GZ->ROS)
+    #         /topic@ros_type]gz_type  (ROS->GZ)
+    bridge_topics = [
+        # Clock
+        '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+        # Diff drive cmd_vel (ROS -> GZ)
+        '/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist',
+        # Odometry (GZ -> ROS)
+        '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
+        # TF from DiffDrive (GZ -> ROS)
+        '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
+        # Joint states (GZ -> ROS)
+        '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model',
+    ]
+
+    # Kinect depth camera topics (4 cameras x 3 topics each)
+    for i in range(1, 5):
+        prefix = f'/kinect{i}/kinect{i}/depth'
+        bridge_topics.extend([
+            f'{prefix}/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+            f'{prefix}/image@sensor_msgs/msg/Image[gz.msgs.Image',
+            f'{prefix}/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+        ])
+
     ros_gz_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        arguments=['--ros-args', '-p', f'config_file:={bridge_config}'],
+        arguments=bridge_topics,
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
