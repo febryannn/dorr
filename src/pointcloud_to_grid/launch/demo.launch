@@ -1,0 +1,21 @@
+<launch>
+  <node pkg="pointcloud_to_grid" type="pointcloud_to_grid_node" name="ptg" output="screen" >
+    <!-- center offset position xy -->
+    <param name="position_x" value="0.5"/>
+    <param name="position_y" value="3.0"/>
+
+    <!-- size of a grid cell -->
+    <param name="cell_size" value="0.02"/>
+    <param name="length_x" value="13.0"/>
+    <param name="length_y" value="9.0"/>
+
+    <!-- <param name="cloud_in_topic" value="/os_cloud_node/points"/> -->
+    <param name="cloud_in_topic" value="/map_cloud"/>
+
+    <!-- <param name="frame_out" value="os1_sensor"/> -->
+
+    <param name="mapi_topic_name" value="mapgrid_i"/>
+    <param name="maph_topic_name" value="mapgrid_h"/>
+  </node>
+  <!-- <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconf" output="screen" /> -->
+</launch>

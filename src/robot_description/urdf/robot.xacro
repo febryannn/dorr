@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot name="agv">
+
+    <link name="odom"/>
+    
+    <!-- Base Link with STL -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <mesh filename="package://robot_description/meshes/agv.stl" scale="1 1 1"/>
+            </geometry>
+            <material name="gray">
+                <color rgba="0.5 0.5 0.5 1.0"/>
+            </material>
+            <origin xyz="0.13 0 0" rpy="0 0 0"/>
+        </visual>
+        
+        <collision>
+            <geometry>
+                <mesh filename="package://robot_description/meshes/agv.stl" scale="1 1 1"/>
+            </geometry>
+            <origin xyz="0.13 0 0" rpy="0 0 0"/>
+        </collision>
+    </link>
+    
+    <!-- Fixed Joint -->
+    <joint name="fixed_joint" type="fixed">
+        <parent link="odom"/>
+        <child link="base_link"/>
+        <origin xyz="0 0 0"/>
+    </joint>
+
+</robot>

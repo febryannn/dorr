@@ -1,0 +1,10 @@
+<launch>
+    <!-- Load robot description from URDF or XACRO file -->
+    <param name="robot_description" command="$(find xacro)/xacro '$(find robot_description)/urdf/robot.xacro'"/>
+    
+    <!-- Robot State Publisher to publish robot description -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen"/>
+
+    <!-- Joint State Publisher (optional if simulating joint states) -->
+    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" output="screen"/>
+</launch>

@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="navigasi" name="simple_nav_differential" type="simple_nav_differential" output="screen"/>
+</launch>
