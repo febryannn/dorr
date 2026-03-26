@@ -6,7 +6,7 @@ import termios
 import tty
 import threading
 from select import select
-from udp_bot.msg import KirimKecepatanUdp
+from udp_bot_msgs.msg import KirimKecepatanUdp
 
 msg_teleop = """
 Reading from the keyboard  and Publishing to Twist!

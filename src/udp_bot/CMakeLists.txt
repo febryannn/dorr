@@ -12,14 +12,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
-
-# Generate messages
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/kirim_kecepatan_udp.msg"
-  "msg/kirim_offset_udp.msg"
-  "msg/terima_udp.msg"
-)
+find_package(udp_bot_msgs REQUIRED)
 
 # Build executable
 add_executable(udp_bot src/udp_bot.cpp)
@@ -33,11 +26,8 @@ ament_target_dependencies(udp_bot
   geometry_msgs
   tf2
   tf2_geometry_msgs
+  udp_bot_msgs
 )
-
-# Link generated message typesupport to the executable
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
-target_link_libraries(udp_bot "${cpp_typesupport_target}")
 
 # Install executable
 install(TARGETS udp_bot
