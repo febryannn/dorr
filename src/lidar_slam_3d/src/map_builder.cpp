@@ -5,7 +5,7 @@
 #include <g2o/core/robust_kernel_impl.h>
 #include <g2o/solvers/cholmod/linear_solver_cholmod.h>
 #include <g2o/core/optimization_algorithm_levenberg.h>
-#include <tf/tf.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
 namespace lidar_slam_3d
 {
@@ -37,7 +37,7 @@ MapBuilder::MapBuilder() :
     SlamBlockSolver::LinearSolverType* linear_solver = new SlamLinearSolver;
     SlamBlockSolver* solver_ptr = new SlamBlockSolver(std::unique_ptr<SlamBlockSolver::LinearSolverType> (linear_solver));
     g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(std::unique_ptr<SlamBlockSolver> (solver_ptr)); // L-M
-    
+
     optimizer_.setAlgorithm(solver);
     optimizer_.setVerbose(false);
 }
@@ -51,7 +51,7 @@ void MapBuilder::downSample(const pcl::PointCloud<pcl::PointXYZI>::Ptr& input_cl
     voxel_grid_filter.filter(*sampled_cloud);
 }
 
-void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point_cloud, Eigen::Matrix4f odom_pose, 
+void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point_cloud, Eigen::Matrix4f odom_pose,
                                Eigen::Matrix4f odom_offset, pcl::PointCloud<pcl::PointXYZ> laser_cloud1, pcl::PointCloud<pcl::PointXYZ> laser_cloud2, pcl::PointCloud<pcl::PointXYZ> laser_cloud3)
 {
     auto t1 = std::chrono::steady_clock::now();
@@ -73,12 +73,12 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
     pcl::PointCloud<pcl::PointXYZI> output_cloud;
     ndt_.setInputSource(sampled_cloud);
     ndt_.align(output_cloud, pose_);
-    
+
     pose_ = ndt_.getFinalTransformation();
 
     Eigen::Matrix4f pose_temp;
     pose_temp = pose_;
-    tf::Matrix3x3 data_R;
+    tf2::Matrix3x3 data_R;
     double data_roll, data_pitch, data_yaw;
     data_R.setValue(pose_temp(0, 0), pose_temp(0, 1), pose_temp(0, 2),
                pose_temp(1, 0), pose_temp(1, 1), pose_temp(1, 2),
@@ -91,13 +91,15 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
     bool converged = ndt_.hasConverged();
     double fitness_score = ndt_.getFitnessScore();
     int final_num_iteration = ndt_.getFinalNumIteration();
+    (void)final_num_iteration;
 
     if(!converged) {
-        ROS_WARN("NDT does not converge!!!");
+        RCLCPP_WARN(rclcpp::get_logger("map_builder"), "NDT does not converge!!!");
     }
 
     float delta = sqrt(square(pose_(0, 3) - last_update_pose_(0, 3)) +
                        square(pose_(1, 3) - last_update_pose_(1, 3)));
+    (void)delta;
 
     // if(delta > map_update_distance_)
     if (true)
@@ -107,7 +109,7 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
         pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZI>());
         pcl::transformPointCloud(*point_cloud, *transformed_cloud, pose_);
         submap_.push_back(transformed_cloud);
-        while(submap_.size() > submap_size_) {
+        while(submap_.size() > static_cast<size_t>(submap_size_)) {
             submap_.erase(submap_.begin());
         }
 
@@ -124,10 +126,10 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
 
         for (size_t i = 0; i < laser_cloud1.points.size(); ++i) {
             float r, theta, midx, midy;
-            r = sqrt( pow(laser_cloud1.points[i].x-pose_(0,3),2) + 
+            r = sqrt( pow(laser_cloud1.points[i].x-pose_(0,3),2) +
                            pow(laser_cloud1.points[i].y-pose_(1,3),2) );
             theta = atan2(laser_cloud1.points[i].y - pose_(1,3), laser_cloud1.points[i].x - pose_(0,3));
-            
+
             r -= 0.1;
             midx = pose_(0,3) + 0.5*r * cos(theta);
             midy = pose_(1,3) + 0.5*r * sin(theta);
@@ -136,21 +138,20 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
             pcl::toPCLPointCloud2(map_, *laser_temp1);
             pcl::CropBox<pcl::PCLPointCloud2> cb1;
             cb1.setInputCloud (laser_temp1);
-            cb1.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0)); /// cb.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-            cb1.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0)); /// cb.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+            cb1.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0));
+            cb1.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0));
             cb1.setTranslation(Eigen::Vector3f(midx, midy, 0.0));
             cb1.setRotation(Eigen::Vector3f (0.0f,0.0f, theta));
             cb1.setNegative (true);
             cb1.filter (*laser_temp1);
             pcl::fromPCLPointCloud2(*laser_temp1, map_);
-            // ROS_INFO_STREAM("midx: " << midx << " midy: " << midy << " r: " << r <<" th: " << theta*57.2958);
         }
         for (size_t i = 0; i < laser_cloud2.points.size(); ++i) {
             float r, theta, midx, midy;
-            r = sqrt( pow(laser_cloud2.points[i].x-pose_(0,3),2) + 
+            r = sqrt( pow(laser_cloud2.points[i].x-pose_(0,3),2) +
                            pow(laser_cloud2.points[i].y-pose_(1,3),2) );
             theta = atan2(laser_cloud2.points[i].y - pose_(1,3), laser_cloud2.points[i].x - pose_(0,3));
-            
+
             r -= 0.1;
             midx = pose_(0,3) + 0.5*r * cos(theta);
             midy = pose_(1,3) + 0.5*r * sin(theta);
@@ -159,21 +160,20 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
             pcl::toPCLPointCloud2(map_, *laser_temp2);
             pcl::CropBox<pcl::PCLPointCloud2> cb2;
             cb2.setInputCloud (laser_temp2);
-            cb2.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0)); /// cb.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-            cb2.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0)); /// cb.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+            cb2.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0));
+            cb2.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0));
             cb2.setTranslation(Eigen::Vector3f(midx, midy, 0.0));
             cb2.setRotation(Eigen::Vector3f (0.0f,0.0f, theta));
             cb2.setNegative (true);
             cb2.filter (*laser_temp2);
             pcl::fromPCLPointCloud2(*laser_temp2, map_);
-            // ROS_INFO_STREAM("midx: " << midx << " midy: " << midy << " r: " << r <<" th: " << theta*57.2958);
         }
         for (size_t i = 0; i < laser_cloud3.points.size(); ++i) {
             float r, theta, midx, midy;
-            r = sqrt( pow(laser_cloud3.points[i].x-pose_(0,3),2) + 
+            r = sqrt( pow(laser_cloud3.points[i].x-pose_(0,3),2) +
                            pow(laser_cloud3.points[i].y-pose_(1,3),2) );
             theta = atan2(laser_cloud3.points[i].y - pose_(1,3), laser_cloud3.points[i].x - pose_(0,3));
-            
+
             r -= 0.1;
             midx = pose_(0,3) + 0.5*r * cos(theta);
             midy = pose_(1,3) + 0.5*r * sin(theta);
@@ -182,18 +182,17 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
             pcl::toPCLPointCloud2(map_, *laser_temp3);
             pcl::CropBox<pcl::PCLPointCloud2> cb3;
             cb3.setInputCloud (laser_temp3);
-            cb3.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0)); /// cb.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
-            cb3.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0)); /// cb.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+            cb3.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0));
+            cb3.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0));
             cb3.setTranslation(Eigen::Vector3f(midx, midy, 0.0));
             cb3.setRotation(Eigen::Vector3f (0.0f,0.0f, theta));
             cb3.setNegative (true);
             cb3.filter (*laser_temp3);
             pcl::fromPCLPointCloud2(*laser_temp3, map_);
-            // ROS_INFO_STREAM("midx: " << midx << " midy: " << midy << " r: " << r <<" th: " << theta*57.2958);
         }
 
         pcl::PointCloud<pcl::PointXYZI>::Ptr target_cloud(new pcl::PointCloud<pcl::PointXYZI>());
-        for(int i = 0; i < submap_.size(); ++i) {
+        for(size_t i = 0; i < submap_.size(); ++i) {
             *target_cloud += *submap_[i];
         }
 

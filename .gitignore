@@ -1,7 +1,7 @@
-# ROS
+# ROS2 / Colcon
 build/
-devel/
-logs/
+install/
+log/
 
 # Editor
 .vscode/

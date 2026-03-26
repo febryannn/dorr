@@ -1,8 +1,8 @@
 #ifndef MAP_BUILDER_H
 #define MAP_BUILDER_H
 
-#include <ros/ros.h>
-#include <sensor_msgs/PointCloud2.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/crop_box.h>
@@ -23,11 +23,11 @@ public:
     MapBuilder();
     ~MapBuilder() {}
 
-    void addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point_cloud, Eigen::Matrix4f odom_pose, 
+    void addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point_cloud, Eigen::Matrix4f odom_pose,
                        Eigen::Matrix4f odom_offset, pcl::PointCloud<pcl::PointXYZ> laser_cloud1, pcl::PointCloud<pcl::PointXYZ> laser_cloud2, pcl::PointCloud<pcl::PointXYZ> laser_cloud3);
 
     Eigen::Matrix4f getTransformation() { return pose_; }
-    void getMap(sensor_msgs::PointCloud2& map_msg)
+    void getMap(sensor_msgs::msg::PointCloud2& map_msg)
     {
         std::unique_lock<std::mutex> locker(map_mutex_);
         pcl::toROSMsg(map_, map_msg);

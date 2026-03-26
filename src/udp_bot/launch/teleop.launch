@@ -1,3 +1,0 @@
-<launch>
-    <node pkg="udp_bot" name="teleop_robot" type="teleop_robot.py" output="screen"/>
-</launch>

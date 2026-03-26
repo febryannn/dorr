@@ -1,3 +1,0 @@
-<launch>
-    <node pkg="udp_bot" name="udp_bot" type="udp_bot" output="screen"/>
-</launch>

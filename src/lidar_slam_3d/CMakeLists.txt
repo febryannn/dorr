@@ -1,21 +1,27 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(lidar_slam_3d)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+set(CMAKE_BUILD_TYPE "Release")
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
-set(CMAKE_BUILD_TYPE "Release")
-# set(CMAKE_CXX_FLAGS "-std=c++11 -o3")
-
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  tf
-  tf2
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  pcl_ros
-  laser_geometry
-)
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_sensor_msgs REQUIRED)
+find_package(laser_geometry REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(std_srvs REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 find_package(G2O REQUIRED)
@@ -26,19 +32,22 @@ set(G2O_LIBS
   g2o_core g2o_stuff g2o_types_sba g2o_types_slam3d
 )
 
-catkin_package(
+set(ROS_DEPS
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  visualization_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  tf2_sensor_msgs
+  laser_geometry
+  pcl_conversions
+  std_srvs
 )
 
-include_directories(
-  "/usr/include/eigen3"
-  src
-  include/lidar_slam_3d
-  ${catkin_INCLUDE_DIRS}
-  ${PCL_INCLUDE_DIRS}
-  ${G2O_INCLUDE_DIRS}
-  ${CHOLMOD_INCLUDE_DIR}
-)
-
+# lidar_slam_3d executable
 add_executable(lidar_slam_3d
   src/floor_filter.cpp
   src/map_builder.cpp
@@ -46,23 +55,52 @@ add_executable(lidar_slam_3d
   src/node.cpp
 )
 
+target_include_directories(lidar_slam_3d PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/lidar_slam_3d>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  ${EIGEN3_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
+  ${G2O_INCLUDE_DIR}
+  ${CHOLMOD_INCLUDE_DIR}
+)
+
+ament_target_dependencies(lidar_slam_3d ${ROS_DEPS})
+
 target_link_libraries(lidar_slam_3d
-  ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
   ${CHOLMOD_LIBRARIES}
   ${G2O_LIBS}
 )
 
-install(TARGETS lidar_slam_3d
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# slam3d_to_grid_node executable
+add_executable(slam3d_to_grid_node
+  src/pointcloud_to_grid_node.cpp
+)
+
+target_include_directories(slam3d_to_grid_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/lidar_slam_3d>
+  ${PCL_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(slam3d_to_grid_node
+  rclcpp
+  sensor_msgs
+  nav_msgs
+  pcl_conversions
+)
+
+target_link_libraries(slam3d_to_grid_node
+  ${PCL_LIBRARIES}
+)
+
+install(TARGETS
+  lidar_slam_3d
+  slam3d_to_grid_node
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY launch
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  DESTINATION share/${PROJECT_NAME}
 )
 
-add_executable(slam3d_to_grid_node src/pointcloud_to_grid_node.cpp)
-target_link_libraries(slam3d_to_grid_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES})
-
+ament_package()
