@@ -2,7 +2,7 @@
 <robot name="agv">
 
     <link name="odom"/>
-    
+
     <!-- Base Link with STL -->
     <link name="base_link">
         <visual>
@@ -14,7 +14,7 @@
             </material>
             <origin xyz="0.13 0 0" rpy="0 0 0"/>
         </visual>
-        
+
         <collision>
             <geometry>
                 <mesh filename="package://robot_description/meshes/agv.stl" scale="1 1 1"/>
@@ -22,12 +22,148 @@
             <origin xyz="0.13 0 0" rpy="0 0 0"/>
         </collision>
     </link>
-    
+
     <!-- Fixed Joint -->
     <joint name="fixed_joint" type="fixed">
         <parent link="odom"/>
         <child link="base_link"/>
         <origin xyz="0 0 0"/>
+    </joint>
+
+    <!-- Camera Link (center reference) -->
+    <link name="camera_link"/>
+    <joint name="base_to_camera" type="fixed">
+        <parent link="base_link"/>
+        <child link="camera_link"/>
+        <origin xyz="0.13 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Kinect 1 - Front -->
+    <link name="kinect1_link"/>
+    <joint name="camera_to_kinect1" type="fixed">
+        <parent link="camera_link"/>
+        <child link="kinect1_link"/>
+        <origin xyz="0.15 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect1_depth_frame"/>
+    <joint name="kinect1_depth_joint" type="fixed">
+        <parent link="kinect1_link"/>
+        <child link="kinect1_depth_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect1_depth_optical_frame"/>
+    <joint name="kinect1_depth_optical_joint" type="fixed">
+        <parent link="kinect1_depth_frame"/>
+        <child link="kinect1_depth_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+    <link name="kinect1_rgb_frame"/>
+    <joint name="kinect1_rgb_joint" type="fixed">
+        <parent link="kinect1_link"/>
+        <child link="kinect1_rgb_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect1_rgb_optical_frame"/>
+    <joint name="kinect1_rgb_optical_joint" type="fixed">
+        <parent link="kinect1_rgb_frame"/>
+        <child link="kinect1_rgb_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+
+    <!-- Kinect 2 - Back -->
+    <link name="kinect2_link"/>
+    <joint name="camera_to_kinect2" type="fixed">
+        <parent link="camera_link"/>
+        <child link="kinect2_link"/>
+        <origin xyz="-0.15 0 0" rpy="0 0 3.14159"/>
+    </joint>
+    <link name="kinect2_depth_frame"/>
+    <joint name="kinect2_depth_joint" type="fixed">
+        <parent link="kinect2_link"/>
+        <child link="kinect2_depth_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect2_depth_optical_frame"/>
+    <joint name="kinect2_depth_optical_joint" type="fixed">
+        <parent link="kinect2_depth_frame"/>
+        <child link="kinect2_depth_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+    <link name="kinect2_rgb_frame"/>
+    <joint name="kinect2_rgb_joint" type="fixed">
+        <parent link="kinect2_link"/>
+        <child link="kinect2_rgb_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect2_rgb_optical_frame"/>
+    <joint name="kinect2_rgb_optical_joint" type="fixed">
+        <parent link="kinect2_rgb_frame"/>
+        <child link="kinect2_rgb_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+
+    <!-- Kinect 3 - Right -->
+    <link name="kinect3_link"/>
+    <joint name="camera_to_kinect3" type="fixed">
+        <parent link="camera_link"/>
+        <child link="kinect3_link"/>
+        <origin xyz="0 -0.15 0" rpy="0 0 -1.5708"/>
+    </joint>
+    <link name="kinect3_depth_frame"/>
+    <joint name="kinect3_depth_joint" type="fixed">
+        <parent link="kinect3_link"/>
+        <child link="kinect3_depth_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect3_depth_optical_frame"/>
+    <joint name="kinect3_depth_optical_joint" type="fixed">
+        <parent link="kinect3_depth_frame"/>
+        <child link="kinect3_depth_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+    <link name="kinect3_rgb_frame"/>
+    <joint name="kinect3_rgb_joint" type="fixed">
+        <parent link="kinect3_link"/>
+        <child link="kinect3_rgb_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect3_rgb_optical_frame"/>
+    <joint name="kinect3_rgb_optical_joint" type="fixed">
+        <parent link="kinect3_rgb_frame"/>
+        <child link="kinect3_rgb_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+
+    <!-- Kinect 4 - Left -->
+    <link name="kinect4_link"/>
+    <joint name="camera_to_kinect4" type="fixed">
+        <parent link="camera_link"/>
+        <child link="kinect4_link"/>
+        <origin xyz="0 0.15 0" rpy="0 0 1.5708"/>
+    </joint>
+    <link name="kinect4_depth_frame"/>
+    <joint name="kinect4_depth_joint" type="fixed">
+        <parent link="kinect4_link"/>
+        <child link="kinect4_depth_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect4_depth_optical_frame"/>
+    <joint name="kinect4_depth_optical_joint" type="fixed">
+        <parent link="kinect4_depth_frame"/>
+        <child link="kinect4_depth_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+    </joint>
+    <link name="kinect4_rgb_frame"/>
+    <joint name="kinect4_rgb_joint" type="fixed">
+        <parent link="kinect4_link"/>
+        <child link="kinect4_rgb_frame"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="kinect4_rgb_optical_frame"/>
+    <joint name="kinect4_rgb_optical_joint" type="fixed">
+        <parent link="kinect4_rgb_frame"/>
+        <child link="kinect4_rgb_optical_frame"/>
+        <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
     </joint>
 
 </robot>

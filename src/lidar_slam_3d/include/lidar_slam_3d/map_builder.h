@@ -24,7 +24,7 @@ public:
     ~MapBuilder() {}
 
     void addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point_cloud, Eigen::Matrix4f odom_pose,
-                       Eigen::Matrix4f odom_offset, pcl::PointCloud<pcl::PointXYZ> laser_cloud1, pcl::PointCloud<pcl::PointXYZ> laser_cloud2, pcl::PointCloud<pcl::PointXYZ> laser_cloud3);
+                       Eigen::Matrix4f odom_offset, pcl::PointCloud<pcl::PointXYZ> laser_cloud1, pcl::PointCloud<pcl::PointXYZ> laser_cloud2, pcl::PointCloud<pcl::PointXYZ> laser_cloud3, pcl::PointCloud<pcl::PointXYZ> laser_cloud4, pcl::PointCloud<pcl::PointXYZ> laser_cloud5);
 
     Eigen::Matrix4f getTransformation() { return pose_; }
     void getMap(sensor_msgs::msg::PointCloud2& map_msg)

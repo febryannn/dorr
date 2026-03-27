@@ -4,8 +4,8 @@
 #include <thread>
 
 #include "rclcpp/rclcpp.hpp"
-#include "udp_bot/msg/terima_udp.hpp"
-#include "udp_bot/msg/kirim_offset_udp.hpp"
+#include "udp_bot_msgs/msg/terima_udp.hpp"
+#include "udp_bot_msgs/msg/kirim_offset_udp.hpp"
 #include "geometry_msgs/msg/pose.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -29,15 +29,15 @@ public:
     vx_global_ = vy_global_ = vw_global_ = 0.0f;
     odom_data_received_ = false;
 
-    sub_robot_odom_ = this->create_subscription<udp_bot::msg::TerimaUdp>(
+    sub_robot_odom_ = this->create_subscription<udp_bot_msgs::msg::TerimaUdp>(
       "data_terima_udp", 10,
       std::bind(&OdomNode::robot_odom_callback, this, std::placeholders::_1));
 
-    sub_robot_offset_ = this->create_subscription<udp_bot::msg::KirimOffsetUdp>(
+    sub_robot_offset_ = this->create_subscription<udp_bot_msgs::msg::KirimOffsetUdp>(
       "offset_kirim_udp", 10,
       std::bind(&OdomNode::robot_offset_callback, this, std::placeholders::_1));
 
-    pub_robot_offset_ = this->create_publisher<udp_bot::msg::KirimOffsetUdp>("offset_kirim_udp", 10);
+    pub_robot_offset_ = this->create_publisher<udp_bot_msgs::msg::KirimOffsetUdp>("offset_kirim_udp", 10);
     pub_robot_pos_ = this->create_publisher<geometry_msgs::msg::Pose>("robot_pos", 10);
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -64,7 +64,7 @@ private:
     }
   }
 
-  void robot_odom_callback(const udp_bot::msg::TerimaUdp::SharedPtr msg)
+  void robot_odom_callback(const udp_bot_msgs::msg::TerimaUdp::SharedPtr msg)
   {
     odox_buf_ = msg->posisi_x_buffer;
     odoy_buf_ = msg->posisi_y_buffer;
@@ -81,7 +81,7 @@ private:
     odom_data_received_ = true;
   }
 
-  void robot_offset_callback(const udp_bot::msg::KirimOffsetUdp::SharedPtr msg)
+  void robot_offset_callback(const udp_bot_msgs::msg::KirimOffsetUdp::SharedPtr msg)
   {
     odox_offset_ = msg->posisi_x_offset;
     odoy_offset_ = msg->posisi_y_offset;
@@ -98,7 +98,7 @@ private:
       odoy_offset_ = odoy_buf_ - roboty_;
       odow_offset_ = odow_buf_ - robotw_;
 
-      auto offset_msg = udp_bot::msg::KirimOffsetUdp();
+      auto offset_msg = udp_bot_msgs::msg::KirimOffsetUdp();
       offset_msg.posisi_x_offset = odox_offset_;
       offset_msg.posisi_y_offset = odoy_offset_;
       offset_msg.sudut_w_offset  = odow_offset_;
@@ -148,9 +148,9 @@ private:
   float vx_global_, vy_global_, vw_global_;
   bool odom_data_received_;
 
-  rclcpp::Subscription<udp_bot::msg::TerimaUdp>::SharedPtr sub_robot_odom_;
-  rclcpp::Subscription<udp_bot::msg::KirimOffsetUdp>::SharedPtr sub_robot_offset_;
-  rclcpp::Publisher<udp_bot::msg::KirimOffsetUdp>::SharedPtr pub_robot_offset_;
+  rclcpp::Subscription<udp_bot_msgs::msg::TerimaUdp>::SharedPtr sub_robot_odom_;
+  rclcpp::Subscription<udp_bot_msgs::msg::KirimOffsetUdp>::SharedPtr sub_robot_offset_;
+  rclcpp::Publisher<udp_bot_msgs::msg::KirimOffsetUdp>::SharedPtr pub_robot_offset_;
   rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_robot_pos_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;

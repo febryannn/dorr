@@ -52,7 +52,7 @@ void MapBuilder::downSample(const pcl::PointCloud<pcl::PointXYZI>::Ptr& input_cl
 }
 
 void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point_cloud, Eigen::Matrix4f odom_pose,
-                               Eigen::Matrix4f odom_offset, pcl::PointCloud<pcl::PointXYZ> laser_cloud1, pcl::PointCloud<pcl::PointXYZ> laser_cloud2, pcl::PointCloud<pcl::PointXYZ> laser_cloud3)
+                               Eigen::Matrix4f odom_offset, pcl::PointCloud<pcl::PointXYZ> laser_cloud1, pcl::PointCloud<pcl::PointXYZ> laser_cloud2, pcl::PointCloud<pcl::PointXYZ> laser_cloud3, pcl::PointCloud<pcl::PointXYZ> laser_cloud4, pcl::PointCloud<pcl::PointXYZ> laser_cloud5)
 {
     auto t1 = std::chrono::steady_clock::now();
     sequence_num_++;
@@ -189,6 +189,50 @@ void MapBuilder::addPointCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& point
             cb3.setNegative (true);
             cb3.filter (*laser_temp3);
             pcl::fromPCLPointCloud2(*laser_temp3, map_);
+        }
+        for (size_t i = 0; i < laser_cloud4.points.size(); ++i) {
+            float r, theta, midx, midy;
+            r = sqrt( pow(laser_cloud4.points[i].x-pose_(0,3),2) +
+                           pow(laser_cloud4.points[i].y-pose_(1,3),2) );
+            theta = atan2(laser_cloud4.points[i].y - pose_(1,3), laser_cloud4.points[i].x - pose_(0,3));
+
+            r -= 0.1;
+            midx = pose_(0,3) + 0.5*r * cos(theta);
+            midy = pose_(1,3) + 0.5*r * sin(theta);
+
+            pcl::PCLPointCloud2::Ptr laser_temp4 (new pcl::PCLPointCloud2());
+            pcl::toPCLPointCloud2(map_, *laser_temp4);
+            pcl::CropBox<pcl::PCLPointCloud2> cb4;
+            cb4.setInputCloud (laser_temp4);
+            cb4.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0));
+            cb4.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0));
+            cb4.setTranslation(Eigen::Vector3f(midx, midy, 0.0));
+            cb4.setRotation(Eigen::Vector3f (0.0f,0.0f, theta));
+            cb4.setNegative (true);
+            cb4.filter (*laser_temp4);
+            pcl::fromPCLPointCloud2(*laser_temp4, map_);
+        }
+        for (size_t i = 0; i < laser_cloud5.points.size(); ++i) {
+            float r, theta, midx, midy;
+            r = sqrt( pow(laser_cloud5.points[i].x-pose_(0,3),2) +
+                           pow(laser_cloud5.points[i].y-pose_(1,3),2) );
+            theta = atan2(laser_cloud5.points[i].y - pose_(1,3), laser_cloud5.points[i].x - pose_(0,3));
+
+            r -= 0.1;
+            midx = pose_(0,3) + 0.5*r * cos(theta);
+            midy = pose_(1,3) + 0.5*r * sin(theta);
+
+            pcl::PCLPointCloud2::Ptr laser_temp5 (new pcl::PCLPointCloud2());
+            pcl::toPCLPointCloud2(map_, *laser_temp5);
+            pcl::CropBox<pcl::PCLPointCloud2> cb5;
+            cb5.setInputCloud (laser_temp5);
+            cb5.setMin(Eigen::Vector4f(-0.5*r, -0.02, 0.0, 0.0));
+            cb5.setMax(Eigen::Vector4f(0.5*r, 0.02, 2.0, 0.0));
+            cb5.setTranslation(Eigen::Vector3f(midx, midy, 0.0));
+            cb5.setRotation(Eigen::Vector3f (0.0f,0.0f, theta));
+            cb5.setNegative (true);
+            cb5.filter (*laser_temp5);
+            pcl::fromPCLPointCloud2(*laser_temp5, map_);
         }
 
         pcl::PointCloud<pcl::PointXYZI>::Ptr target_cloud(new pcl::PointCloud<pcl::PointXYZI>());

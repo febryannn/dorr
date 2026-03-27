@@ -29,7 +29,7 @@ find_package(Cholmod REQUIRED)
 find_package(PCL REQUIRED)
 
 set(G2O_LIBS
-  g2o_core g2o_stuff g2o_types_sba g2o_types_slam3d
+  g2o_core g2o_stuff g2o_types_sba g2o_types_slam3d g2o_solver_cholmod
 )
 
 set(ROS_DEPS
@@ -72,30 +72,8 @@ target_link_libraries(lidar_slam_3d
   ${G2O_LIBS}
 )
 
-# slam3d_to_grid_node executable
-add_executable(slam3d_to_grid_node
-  src/pointcloud_to_grid_node.cpp
-)
-
-target_include_directories(slam3d_to_grid_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/lidar_slam_3d>
-  ${PCL_INCLUDE_DIRS}
-)
-
-ament_target_dependencies(slam3d_to_grid_node
-  rclcpp
-  sensor_msgs
-  nav_msgs
-  pcl_conversions
-)
-
-target_link_libraries(slam3d_to_grid_node
-  ${PCL_LIBRARIES}
-)
-
 install(TARGETS
   lidar_slam_3d
-  slam3d_to_grid_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
