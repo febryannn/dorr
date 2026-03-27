@@ -18,18 +18,19 @@ PointcloudConcatenate::PointcloudConcatenate()
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   // Initialise publishers and subscribers
-  // Queue size of 1 to only keep the most recent message
+  // Use SensorDataQoS (best_effort) to be compatible with ros_gz_bridge
+  auto sensor_qos = rclcpp::SensorDataQoS();
   sub_cloud_in1_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "cloud_in1", 1,
+    "cloud_in1", sensor_qos,
     std::bind(&PointcloudConcatenate::subCallbackCloudIn1, this, std::placeholders::_1));
   sub_cloud_in2_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "cloud_in2", 1,
+    "cloud_in2", sensor_qos,
     std::bind(&PointcloudConcatenate::subCallbackCloudIn2, this, std::placeholders::_1));
   sub_cloud_in3_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "cloud_in3", 1,
+    "cloud_in3", sensor_qos,
     std::bind(&PointcloudConcatenate::subCallbackCloudIn3, this, std::placeholders::_1));
   sub_cloud_in4_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "cloud_in4", 1,
+    "cloud_in4", sensor_qos,
     std::bind(&PointcloudConcatenate::subCallbackCloudIn4, this, std::placeholders::_1));
   pub_cloud_out_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_out", 1);
 

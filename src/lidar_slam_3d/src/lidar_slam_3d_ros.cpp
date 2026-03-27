@@ -49,20 +49,22 @@ LidarSlam3dRos::LidarSlam3dRos()
     floor_points_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("floor_points", rclcpp::QoS(1).transient_local());
     constraint_list_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("constraint_list", rclcpp::QoS(1).transient_local());
 
+    // Use SensorDataQoS for topics from ros_gz_bridge (best_effort compatible)
+    auto sensor_qos = rclcpp::SensorDataQoS().keep_last(10);
     point_cloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        point_cloud_topic, 10000, std::bind(&LidarSlam3dRos::pointCloudCallback, this, _1));
+        point_cloud_topic, sensor_qos, std::bind(&LidarSlam3dRos::pointCloudCallback, this, _1));
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-        odom_topic, 10000, std::bind(&LidarSlam3dRos::odomCallback, this, _1));
+        odom_topic, sensor_qos, std::bind(&LidarSlam3dRos::odomCallback, this, _1));
     laser_sub_1 = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        laser_topic1, 10000, std::bind(&LidarSlam3dRos::laserCallback1, this, _1));
+        laser_topic1, sensor_qos, std::bind(&LidarSlam3dRos::laserCallback1, this, _1));
     laser_sub_2 = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        laser_topic2, 10000, std::bind(&LidarSlam3dRos::laserCallback2, this, _1));
+        laser_topic2, sensor_qos, std::bind(&LidarSlam3dRos::laserCallback2, this, _1));
     laser_sub_3 = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        laser_topic3, 10000, std::bind(&LidarSlam3dRos::laserCallback3, this, _1));
+        laser_topic3, sensor_qos, std::bind(&LidarSlam3dRos::laserCallback3, this, _1));
     laser_sub_4 = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        laser_topic4, 10000, std::bind(&LidarSlam3dRos::laserCallback4, this, _1));
+        laser_topic4, sensor_qos, std::bind(&LidarSlam3dRos::laserCallback4, this, _1));
     laser_sub_5 = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        laser_topic5, 10000, std::bind(&LidarSlam3dRos::laserCallback5, this, _1));
+        laser_topic5, sensor_qos, std::bind(&LidarSlam3dRos::laserCallback5, this, _1));
 
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
